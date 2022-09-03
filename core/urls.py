@@ -7,8 +7,12 @@ from packages.unrest.adapter import createUnrestAdapter
 from packages.unrest.adapter import UnrestAdapterBaseConfig
 
 class Config(UnrestAdapterBaseConfig):
-    def getAuthenticatedUserRoles(user: User) -> list[str]:
-        return []
+    raise_exceptions = True
+    models = {
+        "users": User
+    }
+    def getAuthenticatedUserRoles(user: User) -> str:
+        return user.role
 
 urlpatterns = [
     path('admin/', admin.site.urls),
