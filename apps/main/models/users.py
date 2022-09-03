@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 
 from uuid import uuid4
+from apps.main.constants.enums import UserRoles
 from apps.main.managers.users import CustomUserManager
 
 
@@ -11,6 +12,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     date_created = models.DateTimeField(auto_now_add=True)
+    role = models.CharField(max_length=5, choices=UserRoles.choices, default=UserRoles.USER)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
