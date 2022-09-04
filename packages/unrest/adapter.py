@@ -10,7 +10,7 @@ from . import templates
 from .model import ModelConfig
 from .utils import fromDotNotation
 from .exceptions import UnrestError
-from .utils.data import mapQ
+from .utils.data import mapQ, cleanup
 
 from dataclasses import dataclass
 from typing import Callable, Any
@@ -180,6 +180,7 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
         def post(self, request: Request) -> Response:
             body = request.data
             intent = body.get("intent")
+            select = body.get("select")
             arguments = body.get("arguments", {})
 
             if intent == None:
@@ -191,9 +192,27 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
                 )
 
             handler: Callable = fromDotNotation(root, intent)
+            warning = None
 
             try:
-                return templates.response(data=handler(request, arguments))
+                data = handler(request, arguments)
+                warning = (
+                    "only use select on objects and arrays"
+                    if (not (type(data) in [list, dict, tuple]) and select != None)
+                    else None
+                )
+
+                if select != None:
+                    if hasattr(data, "__iter__"):
+                        copy = [*data]
+                        [cleanup(i, select) for i in copy]
+                    else:
+                        copy = {**data}
+                        cleanup(copy, select)
+                else:
+                    copy = data
+
+                return templates.response(data=copy, warning=warning)
             except Exception as e:
                 if config.raise_exceptions:
                     raise e

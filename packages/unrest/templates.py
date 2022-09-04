@@ -16,7 +16,7 @@ class Error:
         )
 
 
-def response(data: Any = None, error: Error = None):
+def response(data: Any = None, error: Error = None, warning: str = None):
     return dict(
         meta={
             "has_error": bool(error),
@@ -24,4 +24,5 @@ def response(data: Any = None, error: Error = None):
         },
         data=data,
         error=error.json if error else None,
+        warning=warning,
     )
