@@ -1,48 +1,27 @@
-from django.db.models import Q
+from django.db.models import Q, Model
+from dataclasses import dataclass
 
-def permissionConfig(
-        select_column: str|list[str] = None,
-        select_row: bool|Q = None,
-        insert_column: str|list[str] = None,
-        insert_row: bool|Q = None,
-        delete_column: str|list[str] = None,
-        delete_row: bool|Q = None,
-        update_column: str|list[str] = None,
-        update_row: bool|Q = None,
-        base_column: str|list[str]='__all__',
-        base_row: bool|Q=True,
-    ):
-    select_column = base_column if select_column is None else select_column
-    select_row = base_row if select_row is None else select_row
-    insert_column = base_column if insert_column is None else insert_column
-    insert_row = base_row if insert_row is None else insert_row
-    delete_column = base_column if delete_column is None else delete_column
-    delete_row = base_row if delete_row is None else delete_row
-    update_column = base_column if update_column is None else update_column
-    update_row = base_row if update_row is None else update_row
-    return dict(
-        base=dict(
-            column=base_column,
-            row=base_row,
-        ),
-        select=dict(
-            column=select_column,
-            row=select_row,
-        ),
-        update=dict(
-            column=update_column,
-            row=update_row,
-        ),
-        delete=dict(
-            column=delete_column,
-            row=delete_row,
-        ),
-        insert=dict(
-            column=insert_column,
-            row=insert_row,
-        ),
-    )
 
-class UnrestModelMeta:
-    ur_foriegn_keys = {}
-    ur_permissions = {}
+@dataclass(kw_only=True)
+class PermissionUnit:
+    column: str | list[str]
+    row: bool | Q
+
+
+@dataclass(kw_only=True)
+class ModelPermissionConfig:
+    select: PermissionUnit = None
+    insert: PermissionUnit = None
+    update: PermissionUnit = None
+    delete: PermissionUnit = None
+
+
+@dataclass(kw_only=True)
+class ModelConfig:
+    model: Model
+    foriegnkeys: list[tuple[str, Model]] = None
+    permissions: dict[str, ModelPermissionConfig] = None
+
+    @property
+    def name(self) -> str:
+        return self.model._meta.verbose_name_plural

@@ -1,5 +1,6 @@
 from django.db.models import TextChoices
 
+
 class UserRoles(TextChoices):
-    ADMIN = "ADMIN"
-    USER = "USER"
+    ADMIN = "admin"
+    USER = "user"
