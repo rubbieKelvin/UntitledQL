@@ -4,12 +4,13 @@ from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
 
 from django.http.response import HttpResponseBase
-from django.db.models import Model
+from django.db.models import Model, Q
 
 from . import templates
 from .model import ModelConfig
 from .utils import fromDotNotation
 from .exceptions import UnrestError
+from .utils.data import mapQ
 
 from dataclasses import dataclass
 from typing import Callable, Any
@@ -110,7 +111,7 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
     for modelConfig in config.models:
 
         @intenthandler(optional_args={"query"}, default_values={"query": {}})
-        def select(request, options):
+        def select(request, args):
             role = config.getAuthenticatedUserRoles(request.user)
 
             permission = modelConfig.permissions.get(role, None)
@@ -124,11 +125,13 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
                     )
                 )
 
+            query = mapQ(args["query"])
+
             res = (
                 modelConfig.model.objects.all()
                 if permission.select.row == True
                 else modelConfig.model.objects.filter(permission.select.row)
-            )
+            ).filter(query or Q())
 
             class Sr(ModelSerializer):
                 class Meta:
@@ -138,27 +141,27 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
             return Sr(res, many=True).data
 
         @intenthandler()
-        def insert(request, options):
+        def insert(request, args):
             pass
 
         @intenthandler()
-        def insert_many(request, options):
+        def insert_many(request, args):
             pass
 
         @intenthandler()
-        def update(request, options):
+        def update(request, args):
             pass
 
         @intenthandler()
-        def update_many(request, options):
+        def update_many(request, args):
             pass
 
         @intenthandler()
-        def delete(request, options):
+        def delete(request, args):
             pass
 
         @intenthandler()
-        def delete_many(request, options):
+        def delete_many(request, args):
             pass
 
         root["models"][modelConfig.name] = {

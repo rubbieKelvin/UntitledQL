@@ -12,7 +12,7 @@ from packages.unrest.adapter import UnrestAdapterBaseConfig
 
 
 class Config(UnrestAdapterBaseConfig):
-    raise_exceptions = False
+    raise_exceptions = True
     models = [
         ModelConfig(
             model=User,

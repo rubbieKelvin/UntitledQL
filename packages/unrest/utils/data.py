@@ -1,31 +1,7 @@
-import json
-from json.decoder import JSONDecodeError
-
 from django.db.models import Q
 from typing import Callable, TypeVar
-from rest_framework.request import Request
 
 T = TypeVar("T", dict, list)
-
-
-def fromDotNotation(container: dict, path: str, parent=None):
-    parent = parent or "$root"
-
-    key = path.split(".")[0]
-    dots = path.split(".")[1:]
-
-    if type(container) != dict:
-        raise TypeError(f'"{key}" is not a subroot')
-
-    if not (key in container):
-        raise KeyError(f'key "{key}" inexistent in {parent}')
-
-    if len(dots) > 0:
-        return fromDotNotation(
-            container.get(key, {}), ".".join(dots), f"{parent}.{key}"
-        )
-    return container.get(key)
-
 
 QUERY_UNIONS = dict(AND="_and", OR="_or", NOT="_not")
 
@@ -110,7 +86,8 @@ def mapQ(query: dict, parent: str | None = None, join: bool = True) -> Q | list[
     return _and_rel(res) if join else res
 
 
-def _cleanupKeys(data, struct: dict):
+def cleanup(data, struct: dict):
+    "remove keys from data"
     for key, item in struct.items():
         if not (key in data):
             continue
@@ -120,22 +97,6 @@ def _cleanupKeys(data, struct: dict):
                 del data[key]
         elif type(item) == dict:
             if type(data[key]) == list:
-                [_cleanupKeys(item, struct[key]) for item in data[key]]
+                [cleanup(item, struct[key]) for item in data[key]]
             else:
-                _cleanupKeys(data[key], struct[key])
-
-
-def requestMapQuery(request: Request, exclude: dict = None) -> Q:
-    query = request.query_params.get("query", "")
-    if not query:
-        return Q()
-
-    try:
-        query: dict = json.loads(query)
-        if type(query) == dict:
-            if exclude:
-                _cleanupKeys(query, exclude)
-            return mapQ(query)
-    except JSONDecodeError:
-        pass
-    return Q()
+                cleanup(data[key], struct[key])
