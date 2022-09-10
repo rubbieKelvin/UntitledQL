@@ -1,5 +1,6 @@
 from django.db.models import Q, Model
 from dataclasses import dataclass
+from typing_extensions import Self
 
 
 @dataclass(kw_only=True)
@@ -19,7 +20,7 @@ class ModelPermissionConfig:
 @dataclass(kw_only=True)
 class ModelConfig:
     model: Model
-    foriegnkeys: list[tuple[str, Model]] = None
+    foriegnkeys: dict[str, Model] = None
     permissions: dict[str, ModelPermissionConfig] = None
 
     @property

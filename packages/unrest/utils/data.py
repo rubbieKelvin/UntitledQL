@@ -79,6 +79,8 @@ def mapQ(query: dict, parent: str | None = None, join: bool = True) -> Q | list[
             rel = RELATIONSHIP_QUERY_MAPING[key]
             res.append(rel(parent, val))
         else:
+            # join children with parent, signifying relationship
+            # eg; project__authour__email
             root = (
                 f"{parent}__{key}" if (parent and not parent.startswith("_")) else key
             )

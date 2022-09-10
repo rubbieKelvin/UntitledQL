@@ -3,6 +3,7 @@ from django.urls import path
 from django.db.models import Q
 
 from apps.main.models.users import User
+from apps.main.models.projects import Project
 
 from packages.unrest.model import ModelConfig
 from packages.unrest.model import PermissionUnit
@@ -16,7 +17,9 @@ class Config(UnrestAdapterBaseConfig):
     models = [
         ModelConfig(
             model=User,
-            foriegnkeys=[],
+            foriegnkeys={
+                "projects": Project
+            },
             permissions={
                 "anonymous": ModelPermissionConfig(
                     select=PermissionUnit(
@@ -25,6 +28,7 @@ class Config(UnrestAdapterBaseConfig):
                             "email",
                             "role",
                             "id",
+                            "projects",
                         ],
                     )
                 )
