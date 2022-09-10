@@ -8,75 +8,19 @@ from django.db.models import Model, Q
 
 from . import templates
 from .model import ModelConfig
-from .utils import fromDotNotation
+from .utils import fromDotNotation, selectKeys
 from .exceptions import UnrestError
-from .utils.data import mapQ, cleanup
+from .query import mapQ
+from .handlers import IntentHandler
 
 from dataclasses import dataclass
 from typing import Callable, Any
 
 
-def intenthandler(
-    optional_args: set[str] = None,
-    required_args: set[str] = None,
-    default_values: dict[str, Any] = None,
-    allow_unknow_arguments: bool = False,
-):
-    # ...
-    required_args = required_args or set()
-    optional_args = optional_args or set()
-    default_values = default_values or {}
-    all_args = optional_args.union(required_args)
-
-    def decorator(function: Callable[[Request, dict[str, Any]], Any]):
-        def _(request: Request, options: dict[str, Any]):
-
-            # check if required args are present
-            if not (required_args.issubset(options.keys())):
-                raise UnrestError(
-                    templates.Error(
-                        message=f'required keys "{required_args.difference(options.keys())}" not given in argument',
-                        code=400,
-                        type="MISSING_REQUIRED_ARGS",
-                    )
-                )
-
-            # if required args have default argument, raise an error
-            if default_values and set(default_values.keys()).issubset(required_args):
-                raise UnrestError(
-                    templates.Error(
-                        message="required arguments should not have default values",
-                        code=400,
-                        type="DEFAULT_ON_REQUIRED_ARGS",
-                    )
-                )
-
-            # if we do mind foriegn args, check if all arg in oprions was specified
-            if not allow_unknow_arguments and not set(options.keys()).issubset(
-                all_args
-            ):
-                raise UnrestError(
-                    templates.Error(
-                        message=f'unknown keys "{set(options.keys()).difference(all_args)}"',
-                        code=400,
-                        type="UNKNOWN_ARGS",
-                    )
-                )
-
-            for key, val in default_values.items():
-                options.setdefault(key, val)
-
-            return function(request, options)
-
-        return _
-
-    return decorator
-
-
 class UnrestAdapterBaseConfig:
-    raise_exceptions = False
-    models: list[ModelConfig] = []
-    functions = []
+    raise_exceptions = False  # raise exception if an error occurs in intent handler
+    models: list[ModelConfig] = []  # model configurations for unrest
+    functions: list[IntentHandler] = []  # functions config for unrest
 
     @staticmethod
     def getAuthenticatedUserRoles(user: Model) -> str:
@@ -105,12 +49,12 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
 
         return _
 
+    # this is the root for all intents
     root = {"models": {}}
 
     # load up model functions
     for modelConfig in config.models:
 
-        @intenthandler(optional_args={"query"}, default_values={"query": {}})
         def select(request, args):
             role = config.getAuthenticatedUserRoles(request.user)
 
@@ -125,7 +69,7 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
                     )
                 )
 
-            query = mapQ(args["query"])
+            query = mapQ(args["where"])
 
             res = (
                 modelConfig.model.objects.all()
@@ -140,49 +84,55 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
 
             return Sr(res, many=True).data
 
-        @intenthandler()
         def insert(request, args):
             pass
 
-        @intenthandler()
         def insert_many(request, args):
             pass
 
-        @intenthandler()
         def update(request, args):
             pass
 
-        @intenthandler()
         def update_many(request, args):
             pass
 
-        @intenthandler()
         def delete(request, args):
             pass
 
-        @intenthandler()
         def delete_many(request, args):
             pass
 
         root["models"][modelConfig.name] = {
-            "select": select,
-            "insert": insert,
-            "insert_many": insert_many,
-            "update": update,
-            "update_many": update_many,
-            "delete": delete,
-            "delete_many": delete_many,
+            "select": IntentHandler(
+                select, optionalArgs=("where",), defaultValues={"where": {}}
+            ),
+            "insert": IntentHandler(insert),
+            "insert_many": IntentHandler(insert_many),
+            "update": IntentHandler(update),
+            "update_many": IntentHandler(update_many),
+            "delete": IntentHandler(delete),
+            "delete_many": IntentHandler(delete_many),
         }
 
     # ...
     class UnrestAdapter(APIView):
         @response_decorator
         def post(self, request: Request) -> Response:
+            # get response data
             body = request.data
-            intent = body.get("intent")
-            select = body.get("select")
-            arguments = body.get("arguments", {})
 
+            # tells the app what function to call
+            intent = body.get("intent")
+
+            # specifies the return type of the function;
+            # should only be used on dicts or lists of dicts
+            fields = body.get("fields", {})
+
+            # arguments are values to be passed into the handler function
+            # there are required and optional arguments, so the keys in this data should meet the requirements
+            arguments = body.get("args", {})
+
+            # intents are required to use this app
             if intent == None:
                 return templates.response(
                     data=None,
@@ -191,29 +141,43 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
                     ),
                 )
 
-            handler: Callable = fromDotNotation(root, intent)
-            warning = None
+            # get the function that handles from root
+            handler: IntentHandler = fromDotNotation(root, intent)
+            warning = (
+                "fields not specified, you might get an empty data"
+                if not fields
+                else None
+            )
 
             try:
                 data = handler(request, arguments)
-                warning = (
-                    "only use select on objects and arrays"
-                    if (not (type(data) in [list, dict, tuple]) and select != None)
-                    else None
-                )
 
-                if select != None:
+                # raise an error if the intent handler returned any thing other than
+                # the instances of dict or list or tuple
+                if not (
+                    isinstance(data, dict) or hasattr(data, "__iter__") or data == None
+                ):
+                    raise UnrestError(
+                        templates.Error(message="intent should return a list or object")
+                    )
+
+                # if there's no data, do not filter response
+                if data != None:
                     if hasattr(data, "__iter__"):
                         copy = [*data]
-                        [cleanup(i, select) for i in copy]
+                        [selectKeys(i, fields) for i in copy]
                     else:
                         copy = {**data}
-                        cleanup(copy, select)
+                        selectKeys(copy, fields)
                 else:
                     copy = data
 
+                # return
                 return templates.response(data=copy, warning=warning)
+
             except Exception as e:
+
+                # catch all exceptions and return them as error response
                 if config.raise_exceptions:
                     raise e
 

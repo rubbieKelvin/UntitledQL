@@ -86,23 +86,3 @@ def mapQ(query: dict, parent: str | None = None, join: bool = True) -> Q | list[
             )
             res.append(mapQ(val, parent=root, join=True))
     return _and_rel(res) if join else res
-
-
-def cleanup(data: dict, struct: list[str | tuple[str, list[str]]]):
-    "only leave keys specified in struct keys from data"
-    struct_data = {
-        item if type(item) == str else item[0]: True if type(item) == str else item[1]
-        for item in struct
-    }
-    for key, item in {**data}.items():
-        res = struct_data.get(key)
-
-        if res == True:
-            pass
-        elif res == None:
-            del data[key]
-        else:
-            if type(item) == list:
-                [cleanup(i, res) for i in data[key]]
-            else:
-                cleanup(data[key], res)

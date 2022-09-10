@@ -16,6 +16,18 @@ requests = "^2.28.1"
 black = "^22.8.0"
 typing-extensions = "^4.3.0"
 
+[tool.poetry.group.dev.dependencies]
+toml = "^0.10.2"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[pyrun.scripts]
+dev = "python manage.py runserver"
+migrate = "python manage.py makemigrations main; python manage.py migrate"
+reset = 'pyrun reset:migration; pyrun reset:db'
+reset_migration = "rm -r apps/**/migrations/"
+reset_db = "rm db.sqlite3"
+super = "export DJANGO_SUPERUSER_PASSWORD=admin; python manage.py createsuperuser --noinput --email admin@app.dev"
+shell = "python manage.py shell"

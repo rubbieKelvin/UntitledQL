@@ -15,3 +15,21 @@ def fromDotNotation(container: dict, path: str, parent=None):
             container.get(key, {}), ".".join(dots), f"{parent}.{key}"
         )
     return container.get(key)
+
+
+def selectKeys(data: dict, structure: dict):
+    """only leave keys specified in struct keys from data.
+    """
+    
+    for key, item in {**data}.items():
+        res = structure.get(key)
+
+        if res == True:
+            pass
+        elif not res:
+            del data[key]
+        else:
+            if type(item) == list:
+                [selectKeys(i, res) for i in data[key]]
+            else:
+                selectKeys(data[key], res)
