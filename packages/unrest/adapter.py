@@ -1,31 +1,14 @@
 from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.serializers import ModelSerializer
 
 from django.http.response import HttpResponseBase
-from django.db.models import Model, Q
 
 from . import templates
-from .model import ModelConfig
-from .utils import fromDotNotation, selectKeys
+from .utils import selectKeys
 from .exceptions import UnrestError
-from .query import mapQ
-from .handlers import IntentHandler
-
-from dataclasses import dataclass
-from typing import Callable, Any
-
-
-class UnrestAdapterBaseConfig:
-    raise_exceptions = False  # raise exception if an error occurs in intent handler
-    models: list[ModelConfig] = []  # model configurations for unrest
-    functions: list[IntentHandler] = []  # functions config for unrest
-
-    @staticmethod
-    def getAuthenticatedUserRoles(user: Model) -> str:
-        """the calling function to get the role for a user"""
-        raise NotImplementedError
+from .handlers import IntentHandler, ModelIntentHandler
+from .config import UnrestAdapterBaseConfig
 
 
 def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBase:
@@ -49,73 +32,23 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
 
         return _
 
-    # this is the root for all intents
-    root = {"models": {}}
+    # this is the root for intents
+    modelRoots = {}
+    functionRoots = {}
 
-    # load up model functions
+    # load up func roots
+    functionRoots = {
+        f"functions.{intentWrapper.name}": intentWrapper
+        for intentWrapper in config.functions
+    }
+
+    # load up model roots
     for modelConfig in config.models:
+        modelRoots.update(ModelIntentHandler(config, modelConfig).intenthandlers)
 
-        def select(request, args):
-            role = config.getAuthenticatedUserRoles(request.user)
-
-            permission = modelConfig.permissions.get(role, None)
-
-            if not permission or not permission.select and permission.select.row:
-                raise UnrestError(
-                    templates.Error(
-                        message=f'user with role "{role}" cannot access this data',
-                        type="PERMISSION_ERROR",
-                        code=401,
-                    )
-                )
-
-            query = mapQ(args["where"])
-
-            res = (
-                modelConfig.model.objects.all()
-                if permission.select.row == True
-                else modelConfig.model.objects.filter(permission.select.row)
-            ).filter(query or Q())
-
-            class Sr(ModelSerializer):
-                class Meta:
-                    model = modelConfig.model
-                    fields = permission.select.column
-
-            return Sr(res, many=True).data
-
-        def insert(request, args):
-            pass
-
-        def insert_many(request, args):
-            pass
-
-        def update(request, args):
-            pass
-
-        def update_many(request, args):
-            pass
-
-        def delete(request, args):
-            pass
-
-        def delete_many(request, args):
-            pass
-
-        root["models"][modelConfig.name] = {
-            "select": IntentHandler(
-                select, optionalArgs=("where",), defaultValues={"where": {}}
-            ),
-            "insert": IntentHandler(insert),
-            "insert_many": IntentHandler(insert_many),
-            "update": IntentHandler(update),
-            "update_many": IntentHandler(update_many),
-            "delete": IntentHandler(delete),
-            "delete_many": IntentHandler(delete_many),
-        }
-
-    # ...
     class UnrestAdapter(APIView):
+        ROOT = {**modelRoots, **functionRoots}
+
         @response_decorator
         def post(self, request: Request) -> Response:
             # get response data
@@ -142,7 +75,8 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
                 )
 
             # get the function that handles from root
-            handler: IntentHandler = fromDotNotation(root, intent)
+            handler: IntentHandler = self.ROOT[intent]
+
             warning = (
                 "fields not specified, you might get an empty data"
                 if not fields

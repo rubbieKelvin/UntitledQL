@@ -2,12 +2,15 @@ from . import templates
 from typing import Callable, Any
 from .exceptions import UnrestError
 from rest_framework.request import Request
+from .model import ModelConfig
+from .config import UnrestAdapterBaseConfig
+from .query import mapQ
 
 
 class IntentHandler:
     def __init__(
         self,
-        handler: Callable[[Request, dict[str, Any]], dict|list|tuple],
+        handler: Callable[[Request, dict[str, Any]], dict | list | tuple],
         name: str = None,
         description: str = None,
         requiredArgs: tuple = None,
@@ -35,7 +38,15 @@ class IntentHandler:
         self.allowUnknownArgs = allowUnknownArgs
         self._handler = handler
 
-    def __call__(self, request: Request, options: dict[str, Any]) -> dict|list|tuple:
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return f"{self.name}({','.join([i for i in self.args])})"
+
+    def __call__(
+        self, request: Request, options: dict[str, Any]
+    ) -> dict | list | tuple:
         # check if required args are present
         if not (self.requiredArgs.issubset(options.keys())):
             raise UnrestError(
@@ -58,7 +69,7 @@ class IntentHandler:
                 )
             )
 
-        # if we do mind foriegn args, check if all arg in oprions was specified
+        # if we do mind foreign args, check if all arg in oprions was specified
         if not self.allowUnknownArgs and not set(options.keys()).issubset(self.args):
             raise UnrestError(
                 templates.Error(
@@ -72,3 +83,44 @@ class IntentHandler:
             options.setdefault(key, val)
 
         return self._handler(request, options)
+
+
+class ModelIntentHandler:
+    def __init__(
+        self, rootConfig: UnrestAdapterBaseConfig, modelConfig: ModelConfig
+    ) -> None:
+        self.modelConfig = modelConfig
+        self.rootConfig = rootConfig
+
+    def select(self, request: Request, args: dict):
+        role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+        permission = self.modelConfig.permissions.get(role)
+
+        try:
+            Sr = self.modelConfig.createSerializerClass(role, "select")
+        except PermissionError as e:
+            raise UnrestError(
+                templates.Error(
+                    message=str(e),
+                    type="PERMISSION_ERROR",
+                    code=401,
+                )
+            )
+
+        query = mapQ(args.get("where"))
+        models = (
+            self.modelConfig.model.objects.all()
+            if permission.select.row == True
+            else self.modelConfig.model.objects.filter(permission.select.row)
+        )
+        models = models.filter(query) if query else models
+
+        return Sr(models, many=True).data
+
+    @property
+    def intenthandlers(self) -> dict[str, IntentHandler]:
+        return {
+            f"models.{self.modelConfig.name}.select": IntentHandler(
+                self.select, optionalArgs=("where",)
+            )
+        }

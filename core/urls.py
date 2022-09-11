@@ -5,11 +5,13 @@ from django.db.models import Q
 from apps.main.models.users import User
 from apps.main.models.projects import Project
 
+from packages.unrest.model import ForeignKey
 from packages.unrest.model import ModelConfig
+from packages.unrest.model import RelationshipTypes
 from packages.unrest.model import PermissionUnit
 from packages.unrest.model import ModelPermissionConfig
 from packages.unrest.adapter import createUnrestAdapter
-from packages.unrest.adapter import UnrestAdapterBaseConfig
+from packages.unrest.config import UnrestAdapterBaseConfig
 
 
 class Config(UnrestAdapterBaseConfig):
@@ -17,8 +19,8 @@ class Config(UnrestAdapterBaseConfig):
     models = [
         ModelConfig(
             model=User,
-            foriegnkeys={
-                "projects": Project
+            foreignKeys={
+                "projects": ForeignKey(model=Project, type=RelationshipTypes.LIST)
             },
             permissions={
                 "anonymous": ModelPermissionConfig(
@@ -33,7 +35,18 @@ class Config(UnrestAdapterBaseConfig):
                     )
                 )
             },
-        )
+        ),
+        ModelConfig(
+            model=Project,
+            permissions={
+                "anonymous": ModelPermissionConfig(
+                    select=PermissionUnit(
+                        row=Q(is_deleted=False),
+                        column=["id", "name"],
+                    )
+                )
+            },
+        ),
     ]
 
     def getAuthenticatedUserRoles(user: User) -> str:
