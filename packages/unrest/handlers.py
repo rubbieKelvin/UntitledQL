@@ -94,7 +94,11 @@ class ModelIntentHandler:
 
     def select(self, request: Request, args: dict):
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
-        permission = self.modelConfig.permissions.get(role)
+        # get permission config
+        # pass the user id here since we're trying to get the rows
+        permission = self.modelConfig.permissions.get(role, lambda x: None)(
+            getattr(request.user, "id", None)
+        )
 
         try:
             Sr = self.modelConfig.createSerializerClass(role, "select")

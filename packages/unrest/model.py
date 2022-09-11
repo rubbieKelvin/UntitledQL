@@ -1,5 +1,6 @@
 from django.db.models import Q, Model
 from dataclasses import dataclass
+from typing import Callable
 from typing_extensions import Self
 from rest_framework.serializers import ModelSerializer
 from enum import Enum
@@ -38,7 +39,7 @@ class ModelConfig:
         *,
         model: type[Model],
         foreignKeys: dict[str, ForeignKey] = None,
-        permissions: dict[str, ModelPermissionConfig] = None,
+        permissions: dict[str, Callable[[str|None], ModelPermissionConfig]] = None,
     ) -> None:
         self.model = model
         self.foreignKeys = foreignKeys or {}
@@ -87,10 +88,13 @@ class ModelConfig:
             raise TypeError("invalid model operation")
 
         parents = parents or []
-        permission = self.permissions.get(role, None)
-        operationObject: PermissionUnit = getattr(permission, operation)
+        
+        # get the permission from function. we do not need to pass the userid
+        # as we only govern fetching columns here. we can simply pass None
+        permission = self.permissions.get(role, lambda x: None)(None)
+        operationObject: PermissionUnit = getattr(permission, operation, None)
 
-        if not (permission or operation or operationObject.row):
+        if not (permission and operationObject and operationObject.row):
             raise PermissionError(
                 f'user with role "{role}" cannot access this {self.model._meta.model_name}'
             )

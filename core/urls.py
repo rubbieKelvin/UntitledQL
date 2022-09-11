@@ -23,9 +23,14 @@ class Config(UnrestAdapterBaseConfig):
                 "projects": ForeignKey(model=Project, type=RelationshipTypes.LIST)
             },
             permissions={
-                "anonymous": ModelPermissionConfig(
+                "admin": lambda userID: ModelPermissionConfig(
+                    select=PermissionUnit(row=True, column="__all__"),
+                ),
+                "anonymous": lambda userID: ModelPermissionConfig(
                     select=PermissionUnit(
-                        row=Q(is_active=True),
+                        row=Q(
+                            is_active=True,
+                        ),
                         column=[
                             "email",
                             "role",
@@ -33,7 +38,7 @@ class Config(UnrestAdapterBaseConfig):
                             "projects",
                         ],
                     )
-                )
+                ),
             },
         ),
         ModelConfig(
@@ -42,7 +47,10 @@ class Config(UnrestAdapterBaseConfig):
                 "author": ForeignKey(model=User, type=RelationshipTypes.OBJECT)
             },
             permissions={
-                "anonymous": ModelPermissionConfig(
+                "admin": lambda userID: ModelPermissionConfig(
+                    select=PermissionUnit(row=Q(author__id=userID), column="__all__"),
+                ),
+                "anonymous": lambda userID: ModelPermissionConfig(
                     select=PermissionUnit(
                         row=Q(is_deleted=False),
                         column=[
@@ -55,7 +63,7 @@ class Config(UnrestAdapterBaseConfig):
                             "date_created",
                         ],
                     )
-                )
+                ),
             },
         ),
     ]

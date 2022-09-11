@@ -8,6 +8,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "rest_framework.authtoken",
     "apps.main",
 ]
 
@@ -56,3 +57,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 from .auth import *
 from .db import *
 from .security import *
+from .djrf import *
