@@ -38,11 +38,22 @@ class Config(UnrestAdapterBaseConfig):
         ),
         ModelConfig(
             model=Project,
+            foreignKeys={
+                "author": ForeignKey(model=User, type=RelationshipTypes.OBJECT)
+            },
             permissions={
                 "anonymous": ModelPermissionConfig(
                     select=PermissionUnit(
                         row=Q(is_deleted=False),
-                        column=["id", "name"],
+                        column=[
+                            "id",
+                            "name",
+                            "description",
+                            "author",
+                            "last_updated",
+                            "is_archived",
+                            "date_created",
+                        ],
                     )
                 )
             },
