@@ -1,30 +1,29 @@
 from django.db.models import Q, Model
+from django.db.models.fields import Field
 from dataclasses import dataclass
 from typing import Callable
 from typing_extensions import Self
 from rest_framework.serializers import ModelSerializer
-from enum import Enum
-
-
-class RelationshipTypes(Enum):
-    LIST = 1
-    OBJECT = 2
+from .constants import RelationshipTypes, CellFlags
 
 
 @dataclass(kw_only=True)
 class ForeignKey:
+    """data structure for foreign keys"""
     model: type[Model]
     type: RelationshipTypes
 
 
 @dataclass(kw_only=True)
 class PermissionUnit:
-    column: str | list[str]
+    """data structur for permission unit"""
+    column: CellFlags | list[str]
     row: bool | Q
 
 
 @dataclass(kw_only=True)
 class ModelPermissionConfig:
+    """data stutructure for permission config"""
     select: PermissionUnit = None
     insert: PermissionUnit = None
     update: PermissionUnit = None
@@ -39,13 +38,17 @@ class ModelConfig:
         *,
         model: type[Model],
         foreignKeys: dict[str, ForeignKey] = None,
-        permissions: dict[str, Callable[[str|None], ModelPermissionConfig]] = None,
+        permissions: dict[str, Callable[[str | None], ModelPermissionConfig]] = None,
     ) -> None:
         self.model = model
         self.foreignKeys = foreignKeys or {}
         self.permissions = permissions or {}
 
         # add model configs
+        # helpful to fetch configurations for feriegn keys
+        # specified in other configurations
+        # ------------------------------------------------
+        # ? see self.getConfig
         self.modelConfigs[self.name] = self
 
     def __repr__(self) -> str:
@@ -53,10 +56,19 @@ class ModelConfig:
 
     @property
     def name(self) -> str:
+        """returns the name of the model.
+        
+        NOTE: i'm not sure if this would lead to conflicts in projects
+            where there are similar model names in diffrent apps. if this happens to be
+            a problem in the future, we might want to use Meta.label_lower.
+        """
         return self.model._meta.model_name
 
     @staticmethod
     def getConfig(model: type[Model]) -> Self:
+        """fetchs a model configuration if the model has been wrapped in the ModelConfig class.
+        this should use the same method of model name generation used in ModelConfig.name
+        """
         return ModelConfig.modelConfigs.get(model._meta.model_name)
 
     def createSerializerClass(
@@ -88,7 +100,7 @@ class ModelConfig:
             raise TypeError("invalid model operation")
 
         parents = parents or []
-        
+
         # get the permission from function. we do not need to pass the userid
         # as we only govern fetching columns here. we can simply pass None
         permission = self.permissions.get(role, lambda x: None)(None)
@@ -102,7 +114,20 @@ class ModelConfig:
         class Sr(ModelSerializer):
             class Meta:
                 model = self.model
-                fields = operationObject.column
+                # for the fields, we want to include all the specified
+                # foreign keys along side the base fields.
+                # setting fields to '__all__' isnt enough to fetch all specified fields from column,
+                # hence this custom implementation.
+                fields = (
+                    [
+                        field.name
+                        for field in self.model._meta.get_fields()
+                        if isinstance(field, Field)
+                    ]
+                    + [fk for fk in self.foreignKeys.keys()]
+                    if operationObject.column == CellFlags.ALL_COLUMNS
+                    else operationObject.column
+                )
 
             def get_fields(cls):
                 # get already defined fields from serializer class
@@ -115,7 +140,7 @@ class ModelConfig:
                         # skip this model if it's been referenced somewhere
                         # from this node up from the parent's model root
                         continue
-                    
+
                     modelConfig: ModelConfig | None = ModelConfig.getConfig(fk.model)
 
                     if modelConfig:

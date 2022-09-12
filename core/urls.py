@@ -7,7 +7,7 @@ from apps.main.models.projects import Project
 
 from packages.unrest.model import ForeignKey
 from packages.unrest.model import ModelConfig
-from packages.unrest.model import RelationshipTypes
+from packages.unrest.constants import RelationshipTypes, CellFlags
 from packages.unrest.model import PermissionUnit
 from packages.unrest.model import ModelPermissionConfig
 from packages.unrest.adapter import createUnrestAdapter
@@ -24,9 +24,9 @@ class Config(UnrestAdapterBaseConfig):
             },
             permissions={
                 "admin": lambda userID: ModelPermissionConfig(
-                    select=PermissionUnit(row=True, column="__all__"),
+                    select=PermissionUnit(row=True, column=CellFlags.ALL_COLUMNS),
                 ),
-                "anonymous": lambda userID: ModelPermissionConfig(
+                "anonymous": lambda _: ModelPermissionConfig(
                     select=PermissionUnit(
                         row=Q(
                             is_active=True,
@@ -48,9 +48,11 @@ class Config(UnrestAdapterBaseConfig):
             },
             permissions={
                 "admin": lambda userID: ModelPermissionConfig(
-                    select=PermissionUnit(row=Q(author__id=userID), column="__all__"),
+                    select=PermissionUnit(
+                        row=Q(author__id=userID), column=CellFlags.ALL_COLUMNS
+                    ),
                 ),
-                "anonymous": lambda userID: ModelPermissionConfig(
+                "anonymous": lambda _: ModelPermissionConfig(
                     select=PermissionUnit(
                         row=Q(is_deleted=False),
                         column=[
