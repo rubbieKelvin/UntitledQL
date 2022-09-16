@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "pocket-api"
+name = "uql"
 version = "0.1.0"
-description = "api for task manager"
+description = "Application layer for building Django apps with a breeze"
 authors = ["rubbie kelvin voltsman <rubbiekelvinvoltsman@gmail.com>"]
 license = "GNU"
 
@@ -22,11 +22,12 @@ typing-extensions = "^4.3.0"
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[pyrun.scripts]
-dev = "python manage.py runserver"
-migrate = "python manage.py makemigrations main; python manage.py migrate"
-reset = 'pyrun reset:migration; pyrun reset:db'
-reset_migration = "rm -r apps/**/migrations/"
-reset_db = "rm db.sqlite3"
-super = "export DJANGO_SUPERUSER_PASSWORD=admin; python manage.py createsuperuser --noinput --email admin@app.dev"
-shell = "python manage.py shell"
+# [pyrun.scripts]
+# https://github.com/rubbieKelvin/pyrun
+# dev = "python manage.py runserver"
+# migrate = "python manage.py makemigrations main; python manage.py migrate"
+# reset = 'pyrun reset:migration; pyrun reset:db'
+# reset_migration = "rm -r apps/**/migrations/"
+# reset_db = "rm db.sqlite3"
+# super = "export DJANGO_SUPERUSER_PASSWORD=admin; python manage.py createsuperuser --noinput --email admin@app.dev"
+# shell = "python manage.py shell"
