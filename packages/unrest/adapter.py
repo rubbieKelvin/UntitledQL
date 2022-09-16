@@ -97,12 +97,12 @@ def createUnrestAdapter(config: type[UnrestAdapterBaseConfig]) -> HttpResponseBa
 
                 # if there's no data, do not filter response
                 if data != None:
-                    if hasattr(data, "__iter__"):
-                        copy = [*data]
-                        [selectKeys(i, fields) for i in copy]
-                    else:
+                    if hasattr(data, "__dict__"):
                         copy = {**data}
                         selectKeys(copy, fields)
+                    else:
+                        copy = [*data]
+                        [selectKeys(i, fields) for i in copy]
                 else:
                     copy = data
 

@@ -1,35 +1,44 @@
-# def fromDotNotation(container: dict, path: str, parent=None):
-#     parent = parent or "$root"
-
-#     key = path.split(".")[0]
-#     dots = path.split(".")[1:]
-
-#     if type(container) != dict:
-#         raise TypeError(f'"{key}" is not a subroot')
-
-#     if not (key in container):
-#         raise KeyError(f'key "{key}" inexistent in {parent}')
-
-#     if len(dots) > 0:
-#         return fromDotNotation(
-#             container.get(key, {}), ".".join(dots), f"{parent}.{key}"
-#         )
-#     return container.get(key)
+from collections.abc import Mapping
+from collections.abc import Sequence
 
 
-def selectKeys(data: dict, structure: dict):
-    """only leave keys specified in struct keys from data.
-    """
-    
-    for key, item in {**data}.items():
-        res = structure.get(key)
+def selectKeys(data: Mapping, structure: dict):
+    """Perfoms a quick lookup on data and removes keys that points to false in the structure map"""
+    for key, val in {**data}.items():
+        structureNeedsKey: dict | bool = structure.get(key)
+        isContainer = isinstance(val, Sequence) or isinstance(val, Mapping)
 
-        if res == True:
-            pass
-        elif not res:
-            del data[key]
+        if structureNeedsKey:
+            if isContainer:
+                if isinstance(val, Mapping):
+                    selectKeys(data[key], structure[key])
+                elif isinstance(val, Sequence):
+                    [
+                        selectKeys(i, structure[key])
+                        for i in data[key]
+                        if isinstance(data[key], Mapping)
+                    ]
         else:
-            if type(item) == list:
-                [selectKeys(i, res) for i in data[key]]
+            del data[key]
+
+
+def selectKeysImmutable(data: Mapping, structure: dict) -> dict:
+    res = {}
+    for key, val in structure.items():
+        if not (key in data):
+            raise KeyError(f"{key} doenst exist in root")
+
+        needsValue = bool(val)
+
+        if needsValue:
+            if isinstance(data[key], Mapping):
+                res[key] = selectKeysImmutable(data[key], val)
+            elif isinstance(data[key], Sequence):
+                res[key] = [
+                    selectKeysImmutable(i, val) if isinstance(val, Mapping) else i
+                    for i in data[key]
+                ]
             else:
-                selectKeys(data[key], res)
+                res[key] = data[key]
+
+    return res

@@ -8,7 +8,7 @@ from apps.main.models.projects import Project
 from packages.unrest.model import ForeignKey
 from packages.unrest.model import ModelConfig
 from packages.unrest.constants import RelationshipTypes, CellFlags
-from packages.unrest.model import PermissionUnit
+from packages.unrest.model import PermissionUnit, InsertCheck
 from packages.unrest.model import ModelPermissionConfig
 from packages.unrest.adapter import createUnrestAdapter
 from packages.unrest.config import UnrestAdapterBaseConfig
@@ -37,7 +37,11 @@ class Config(UnrestAdapterBaseConfig):
                             "id",
                             "projects",
                         ],
-                    )
+                    ),
+                    insert=InsertCheck(
+                        column=["email"],
+                        check=lambda _, _set: len(_set.get("email")) > 7,
+                    ),
                 ),
             },
         ),

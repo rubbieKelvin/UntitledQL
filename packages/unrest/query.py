@@ -1,3 +1,4 @@
+# TODO: properly explain/document this file, cus me sef i dont understand
 from django.db.models import Q
 from typing import Callable, TypeVar
 

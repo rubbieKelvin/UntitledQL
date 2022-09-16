@@ -1,8 +1,9 @@
 from django.db.models import Q, Model
 from django.db.models.fields import Field
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Any
 from typing_extensions import Self
+from rest_framework.request import Request
 from rest_framework.serializers import ModelSerializer
 from .constants import RelationshipTypes, CellFlags
 
@@ -10,23 +11,50 @@ from .constants import RelationshipTypes, CellFlags
 @dataclass(kw_only=True)
 class ForeignKey:
     """data structure for foreign keys"""
+
     model: type[Model]
     type: RelationshipTypes
 
 
 @dataclass(kw_only=True)
 class PermissionUnit:
-    """data structur for permission unit"""
+    """data structure for permission unit"""
+
     column: CellFlags | list[str]
     row: bool | Q
 
 
 @dataclass(kw_only=True)
+class InsertCheck:
+    """a permission unit for insert operations.
+    # check is a function that takes in request and the _set values to check if the values are valid
+    """
+
+    column: CellFlags | list[str]
+    check: Callable[
+        [Request, Any], bool
+    ] = lambda req, _set: True  # takes in request and the attrs to set
+
+
+@dataclass(kw_only=True)
+class UpdateCheck:
+    """a permission unit, for updates operations.
+    # row is a query to get the list of updatable queryset
+    # check is a function that takes in request and the _set values to check if the values are valid
+    """
+
+    column: CellFlags | list[str]
+    row: bool | Q
+    check: Callable[[Request, Any], bool] = lambda req, _set: True
+
+
+@dataclass(kw_only=True)
 class ModelPermissionConfig:
     """data stutructure for permission config"""
+
     select: PermissionUnit = None
-    insert: PermissionUnit = None
-    update: PermissionUnit = None
+    insert: InsertCheck = None
+    update: UpdateCheck = None
     delete: PermissionUnit = None
 
 
@@ -57,7 +85,7 @@ class ModelConfig:
     @property
     def name(self) -> str:
         """returns the name of the model.
-        
+
         NOTE: i'm not sure if this would lead to conflicts in projects
             where there are similar model names in diffrent apps. if this happens to be
             a problem in the future, we might want to use Meta.label_lower.
@@ -72,7 +100,7 @@ class ModelConfig:
         return ModelConfig.modelConfigs.get(model._meta.model_name)
 
     def createSerializerClass(
-        self, role: str, operation: str, parents: list[type[Model]] = None
+        self, role: str, parents: list[type[Model]] = None
     ) -> type[ModelSerializer]:
         """Creates a model serialiser class from user's role and operation type,
         which determines the kind of serializer that would be produced. depending on what
@@ -83,7 +111,6 @@ class ModelConfig:
 
         Args:
             role (str): the user's role
-            operation (str): any one of select|insert|update|delete
             parents (list[type[Model]], optional): list of all the models that's been called
                 before this in linear manner, with each model traversing all the way up directly
                 to it's parent. this is an effort to fix the infinte relationship loop, where a foreign model
@@ -96,20 +123,15 @@ class ModelConfig:
         Returns:
             type[ModelSerializer]: returns the serializer class
         """
-        if not (operation in ["select", "insert", "update", "delete"]):
-            raise TypeError("invalid model operation")
-
         parents = parents or []
 
         # get the permission from function. we do not need to pass the userid
         # as we only govern fetching columns here. we can simply pass None
         permission = self.permissions.get(role, lambda x: None)(None)
-        operationObject: PermissionUnit = getattr(permission, operation, None)
+        operationObject: PermissionUnit = permission.select
 
         if not (permission and operationObject and operationObject.row):
-            raise PermissionError(
-                f'user with role "{role}" cannot access this {self.model._meta.model_name}'
-            )
+            raise PermissionError(f'user with role "{role}" cannot select {self.name}')
 
         class Sr(ModelSerializer):
             class Meta:
@@ -145,7 +167,7 @@ class ModelConfig:
 
                     if modelConfig:
                         _sr = modelConfig.createSerializerClass(
-                            role, operation, parents=[*parents, self.model]
+                            role, parents=[*parents, self.model]
                         )
                         fields[name] = _sr(many=fk.type == RelationshipTypes.LIST)
                 return fields
