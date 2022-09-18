@@ -1,15 +1,34 @@
-from . import templates
-from typing import Callable, Any
-from .exceptions import UnrestError
-from rest_framework.request import Request
+import re
+
+# from . import templates
 from .model import ModelConfig
-from .config import UnrestAdapterBaseConfig
+from .config import UQLConfig
 from .constants import CellFlags
-from .query import mapQ
+from .utils import templates as t
+from .utils.query import makeQuery
+from .utils.exceptions import Interruption
+
+from typing import Callable, Any
+from typing_extensions import Self
+from rest_framework.request import Request
 from django.db.models import Field
 
 
-class IntentHandler:
+def _validateModuleName(cls: type[Self], v: str) -> Self:
+    modelc = re.compile(r"^(\w+[.]?\w+)$")
+    if re.match(modelc, v):
+        return v
+    raise Exception(f"bad module name {v}")
+
+
+def _validateFunctionName(cls: type[Self], v: str) -> Self:
+    funcc = re.compile(r"^\w+$")
+    if re.match(funcc, v):
+        return v
+    raise Exception(f"bad function name {v}")
+
+
+class IntentFunction:
     def __init__(
         self,
         handler: Callable[[Request, dict[str, Any]], dict | list | tuple],
@@ -31,7 +50,7 @@ class IntentHandler:
             defaultValues (dict, optional): _description_. Defaults to None.
             allowUnknownArgs (bool, optional): _description_. Defaults to False.
         """
-        self.name = name or handler.__name__
+        self.name = _validateFunctionName(name or handler.__name__)
         self.description = description or handler.__doc__
         self.requiredArgs = set(requiredArgs) if requiredArgs else set()
         self.optionalArgs = set(optionalArgs) if optionalArgs else set()
@@ -51,8 +70,8 @@ class IntentHandler:
     ) -> dict | list | tuple:
         # check if required args are present
         if not (self.requiredArgs.issubset(options.keys())):
-            raise UnrestError(
-                templates.Error(
+            raise Interruption(
+                t.error(
                     message=f'required keys "{self.requiredArgs.difference(options.keys())}" not given in argument',
                     code=400,
                     type="MISSING_REQUIRED_ARGS",
@@ -63,8 +82,8 @@ class IntentHandler:
         if self.defaultValues and set(self.defaultValues.keys()).issubset(
             self.requiredArgs
         ):
-            raise UnrestError(
-                templates.Error(
+            raise Interruption(
+                t.error(
                     message="required arguments should not have default values",
                     code=400,
                     type="DEFAULT_ON_REQUIRED_ARGS",
@@ -73,8 +92,8 @@ class IntentHandler:
 
         # if we do mind foreign args, check if all arg in oprions was specified
         if not self.allowUnknownArgs and not set(options.keys()).issubset(self.args):
-            raise UnrestError(
-                templates.Error(
+            raise Interruption(
+                t.error(
                     message=f'unknown keys "{set(options.keys()).difference(self.args)}"',
                     code=400,
                     type="UNKNOWN_ARGS",
@@ -87,10 +106,8 @@ class IntentHandler:
         return self._handler(request, options)
 
 
-class ModelIntentHandler:
-    def __init__(
-        self, rootConfig: UnrestAdapterBaseConfig, modelConfig: ModelConfig
-    ) -> None:
+class ModelIntent:
+    def __init__(self, rootConfig: UQLConfig, modelConfig: ModelConfig) -> None:
         self.modelConfig = modelConfig
         self.rootConfig = rootConfig
 
@@ -102,7 +119,7 @@ class ModelIntentHandler:
             args (dict): _description_
 
         Raises:
-            UnrestError: _description_
+            Interruption: _description_
 
         Returns:
             _type_: _description_
@@ -117,15 +134,15 @@ class ModelIntentHandler:
         try:
             Sr = self.modelConfig.createSerializerClass(role)
         except PermissionError as e:
-            raise UnrestError(
-                templates.Error(
+            raise Interruption(
+                t.error(
                     message=str(e),
                     type="PERMISSION_ERROR",
                     code=401,
                 )
             )
 
-        query = mapQ(args.get("where"))
+        query = makeQuery(args.get("where"))
         models = (
             self.modelConfig.model.objects.all()
             if permission.select.row == True
@@ -155,8 +172,8 @@ class ModelIntentHandler:
             _pass_check = permission.insert.check(request, _set)
 
         if not (_has_insert_permission and _pass_check):
-            raise UnrestError(
-                templates.Error(
+            raise Interruption(
+                t.error(
                     message=(
                         "Unauthorized mutation"
                         if not _pass_check
@@ -181,8 +198,8 @@ class ModelIntentHandler:
 
         for key in _set.keys():
             if not (key in fields):
-                raise UnrestError(
-                    templates.Error(
+                raise Interruption(
+                    t.error(
                         message=f'cannot insert "{key}" in {self.modelConfig.name}',
                         type="UNKNOWN_KEYS",
                         code=400,
@@ -199,8 +216,8 @@ class ModelIntentHandler:
             return Sr(model).data
 
         except Exception as e:
-            raise UnrestError(
-                templates.Error(
+            raise Interruption(
+                t.error(
                     message=str(e),
                     type=e.__class__.__name__ or "UNKNOWN_ERROR",
                     code=400,
@@ -208,12 +225,24 @@ class ModelIntentHandler:
             )
 
     @property
-    def intenthandlers(self) -> dict[str, IntentHandler]:
+    def intenthandlers(self) -> dict[str, IntentFunction]:
         name = self.modelConfig.name
 
         return {
-            f"models.{name}.select": IntentHandler(
+            f"models.{name}.select": IntentFunction(
                 self.select, optionalArgs=("where",)
             ),
-            f"models.{name}.insert": IntentHandler(self.insert, requiredArgs=("_set",)),
+            f"models.{name}.insert": IntentFunction(
+                self.insert, requiredArgs=("_set",)
+            ),
         }
+
+
+class IntentModule:
+    def __init__(self, name: str, functions: list[IntentFunction]) -> None:
+        self.name = _validateModuleName(name)
+        self.functions = functions
+
+    @property
+    def spread(self) -> dict[str, IntentFunction]:
+        return {f"{self.name}.{intent.name}": intent for intent in self.functions}
