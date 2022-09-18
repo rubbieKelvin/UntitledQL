@@ -1,11 +1,17 @@
+from dataclasses import dataclass
+
 from django.db.models import Q, Model
 from django.db.models.fields import Field
-from dataclasses import dataclass
+
 from typing import Callable, Any
 from typing_extensions import Self
+
 from rest_framework.request import Request
 from rest_framework.serializers import ModelSerializer
-from .constants import RelationshipTypes, CellFlags
+
+from .constants import RelationshipTypes
+from .constants import CellFlags
+from .constants import ModelOperations
 
 
 @dataclass(kw_only=True)
@@ -68,10 +74,12 @@ class ModelConfig:
         model: type[Model],
         foreignKeys: dict[str, ForeignKey] = None,
         permissions: dict[str, Callable[[str | None], ModelPermissionConfig]] = None,
+        allowedOperations: list[ModelOperations] = None
     ) -> None:
         self.model = model
         self.foreignKeys = foreignKeys or {}
         self.permissions = permissions or {}
+        self.allowedOperations = allowedOperations or ModelOperations.all()
 
         # add model configs
         # helpful to fetch configurations for feriegn keys

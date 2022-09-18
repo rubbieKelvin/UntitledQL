@@ -5,6 +5,7 @@ from uql.model import PermissionUnit
 from uql.model import ModelPermissionConfig
 from uql.constants import CellFlags
 from uql.constants import RelationshipTypes
+from uql.constants import ModelOperations
 
 from main.models.users import User
 from main.models.projects import Project
@@ -13,6 +14,7 @@ from django.db.models import Q
 
 default = ModelConfig(
     model=User,
+    allowedOperations=ModelOperations.readonly_and_single_write(),
     foreignKeys={"projects": ForeignKey(model=Project, type=RelationshipTypes.LIST)},
     permissions={
         "admin": lambda userID: ModelPermissionConfig(

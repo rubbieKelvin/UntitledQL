@@ -95,6 +95,14 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                     error=t.error(message="intent not provided", type="NO_INTENT"),
                 )
 
+            if not (intent in self.ROOT):
+                return t.response(
+                    data=None,
+                    error=t.error(
+                        message="intent does not exist", type="INEXISTENT_INTENT"
+                    ),
+                )
+
             # get the function that handles from root
             handler: IntentFunction = self.ROOT[intent]
 

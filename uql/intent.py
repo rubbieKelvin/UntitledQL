@@ -3,6 +3,7 @@ import re
 from .model import ModelConfig
 from .config import UQLConfig
 from .constants import CellFlags
+from .constants import ModelOperations
 from .utils import templates as t
 from .utils.query import makeQuery
 from .utils.exceptions import Interruption
@@ -352,19 +353,30 @@ class ModelIntent:
     def intenthandlers(self) -> dict[str, IntentFunction]:
         name = self.modelConfig.name
 
-        return {
-            f"models.{name}.select": IntentFunction(
-                self.select, optionalArgs=("where",)
+        rel = {
+            ModelOperations.SELECT: (
+                f"models.{name}.select", IntentFunction(
+                    self.select, optionalArgs=("where",)
+                )
             ),
-            f"models.{name}.insert": IntentFunction(
-                self.insert, requiredArgs=("object",)
+            ModelOperations.INSERT: (
+                f"models.{name}.insert", IntentFunction(
+                    self.insert, requiredArgs=("object",)
+                )
             ),
-            f"models.{name}.insertmany": IntentFunction(
-                self.insertMany,
-                requiredArgs=("objects",),
+            ModelOperations.INSERT_MANY: (
+                f"models.{name}.insertmany", IntentFunction(
+                    self.insertMany,
+                    requiredArgs=("objects",),
+                ),
             ),
         }
 
+        for i in [*rel.keys()]:
+            if not (i in self.modelConfig.allowedOperations):
+                del rel[i]
+
+        return dict([pair for pair in rel.values()])
 
 class IntentModule:
     def __init__(self, name: str, functions: list[IntentFunction]) -> None:
