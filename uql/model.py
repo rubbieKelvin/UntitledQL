@@ -31,6 +31,7 @@ class InsertCheck:
     """
 
     column: CellFlags | list[str]
+    requiredFields: list[str]
     check: Callable[
         [Request, Any], bool
     ] = lambda req, _set: True  # takes in request and the attrs to set

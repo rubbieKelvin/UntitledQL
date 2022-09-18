@@ -9,7 +9,10 @@ from .utils.exceptions import Interruption
 
 from typing import Callable, Any
 from typing_extensions import Self
+
 from rest_framework.request import Request
+
+from django.db import transaction
 from django.db.models import Field
 
 
@@ -169,7 +172,7 @@ class ModelIntent:
         _has_insert_permission = permission and permission.insert
 
         if _has_insert_permission:
-            _pass_check = permission.insert.check(request, _set)
+            _pass_check = _set and permission.insert.check(request, _set)
 
         if not (_has_insert_permission and _pass_check):
             raise Interruption(
@@ -182,6 +185,18 @@ class ModelIntent:
                     type="PERMISSION_ERROR",
                     code=401,
                 )
+            )
+
+        # required fields should be a subset of insertable column
+        if not set(permission.insert.requiredFields).issubset(permission.insert.column):
+            raise Exception(
+                "insert.requiredFields should be a subset of insert.columns"
+            )
+
+        # check if required field's in _set
+        if not set(permission.insert.requiredFields).issubset(_set.keys()):
+            raise Exception(
+                f"requires fields ({', '.join(permission.insert.requiredFields)})"
             )
 
         # check if user only included permitted colums in _set
@@ -223,6 +238,21 @@ class ModelIntent:
                     code=400,
                 )
             )
+            
+    def insertMany(self, request: Request, args: dict):
+        pass
+    
+    def update(self, request: Request, args: dict):
+        pass
+    
+    def updateMany(self, request: Request, args: dict):
+        pass
+    
+    def delete(self, request: Request, args:dict):
+        pass
+    
+    def deleteMany(self, reqeust: Request, args: dict):
+        pass
 
     @property
     def intenthandlers(self) -> dict[str, IntentFunction]:

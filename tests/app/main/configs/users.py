@@ -23,16 +23,11 @@ default = ModelConfig(
                 row=Q(
                     is_active=True,
                 ),
-                column=[
-                    "email",
-                    "role",
-                    "id",
-                    "projects",
-                ],
+                column=["email", "role", "id", "projects", "is_active"],
             ),
             insert=InsertCheck(
-                column=["email"],
-                check=lambda _, _set: len(_set.get("email")) > 7,
+                column=["email", "is_active"],
+                requiredFields=["email"],
             ),
         ),
     },
