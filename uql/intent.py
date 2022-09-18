@@ -14,6 +14,7 @@ from rest_framework.request import Request
 
 from django.db import transaction
 from django.db.models import Field
+from django.db.utils import IntegrityError
 
 
 def _validateModuleName(v: str) -> Self:
@@ -156,7 +157,7 @@ class ModelIntent:
         return Sr(models, many=True).data
 
     def insert(self, request: Request, args: dict):
-        _set: dict = args.get("_set")  # required
+        obj: dict = args["object"]  # required
 
         # get role and permission config
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
@@ -166,13 +167,13 @@ class ModelIntent:
 
         # check permission's there
         # check insert's there
-        # check that the _set values is valid
+        # check that the obj values is valid
 
         _pass_check = False
         _has_insert_permission = permission and permission.insert
 
         if _has_insert_permission:
-            _pass_check = _set and permission.insert.check(request, _set)
+            _pass_check = obj and permission.insert.check(request, obj)
 
         if not (_has_insert_permission and _pass_check):
             raise Interruption(
@@ -193,13 +194,13 @@ class ModelIntent:
                 "insert.requiredFields should be a subset of insert.columns"
             )
 
-        # check if required field's in _set
-        if not set(permission.insert.requiredFields).issubset(_set.keys()):
+        # check if required field's in obj
+        if not set(permission.insert.requiredFields).issubset(obj.keys()):
             raise Exception(
                 f"requires fields ({', '.join(permission.insert.requiredFields)})"
             )
 
-        # check if user only included permitted colums in _set
+        # check if user only included permitted colums in obj
         fields = (
             [
                 field.name
@@ -211,7 +212,7 @@ class ModelIntent:
             else permission.insert.column
         )
 
-        for key in _set.keys():
+        for key in obj.keys():
             if not (key in fields):
                 raise Interruption(
                     t.error(
@@ -223,7 +224,7 @@ class ModelIntent:
 
         try:
             # create model
-            model = self.modelConfig.model(**_set)
+            model = self.modelConfig.model(**obj)
             model.save()
 
             # get model data from select realizers
@@ -238,19 +239,112 @@ class ModelIntent:
                     code=400,
                 )
             )
-            
+
     def insertMany(self, request: Request, args: dict):
-        pass
-    
+        objects: list[dict] = args["objects"]  # required
+
+        # get role and permission config
+        role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+        permission = self.modelConfig.permissions.get(role, lambda x: None)(
+            getattr(request.user, "id", None)
+        )
+
+        # check permission's there
+        # check insert's there
+        # check that the _set values is valid
+
+        _pass_check = False
+        _has_insert_permission = permission and permission.insert
+
+        if _has_insert_permission:
+            _pass_check = objects and all(
+                [permission.insert.check(request, obj) for obj in objects]
+            )
+
+        if not (_has_insert_permission and _pass_check):
+            raise Interruption(
+                t.error(
+                    message=(
+                        "Unauthorized mutation"
+                        if not _pass_check
+                        else f'User with role "{role}" cannot insert into {self.modelConfig.name}'
+                    ),
+                    type="PERMISSION_ERROR",
+                    code=401,
+                )
+            )
+
+        # required fields should be a subset of insertable column
+        if not set(permission.insert.requiredFields).issubset(permission.insert.column):
+            raise Exception(
+                "insert.requiredFields should be a subset of insert.columns"
+            )
+
+        # check if required field's in each object
+        if not all(
+            [
+                set(permission.insert.requiredFields).issubset(obj.keys())
+                for obj in objects
+            ]
+        ):
+            raise Exception(
+                f"requires fields ({', '.join(permission.insert.requiredFields)})"
+            )
+
+        # check if user only included permitted colums in each object
+        fields = (
+            [
+                field.name
+                for field in self.modelConfig.model._meta.get_fields()
+                if isinstance(field, Field)
+            ]
+            + [fk for fk in self.modelConfig.foreignKeys.keys()]
+            if permission.insert.column == CellFlags.ALL_COLUMNS
+            else permission.insert.column
+        )
+
+        res = []  # result
+
+        try:
+            with transaction.atomic():
+                for obj in objects:
+                    for key in obj.keys():
+                        if not (key in fields):
+                            raise Interruption(
+                                t.error(
+                                    message=f'cannot insert "{key}" in {self.modelConfig.name}',
+                                    type="UNKNOWN_KEYS",
+                                    code=400,
+                                )
+                            )
+
+                    # create model
+                    model = self.modelConfig.model(**obj)
+                    model.save()
+
+                    # get model data from select realizers
+                    Sr = self.modelConfig.createSerializerClass(role)
+                    res.append(Sr(model).data)
+
+                return res
+        except (transaction.TransactionManagementError, IntegrityError) as e:
+            raise Interruption(
+                t.error(
+                    message=str(e),
+                    type=e.__class__.__name__ or "DATABASE_ERROR",
+                    code=400,
+                )
+            )
+
     def update(self, request: Request, args: dict):
         pass
-    
+
     def updateMany(self, request: Request, args: dict):
         pass
-    
-    def delete(self, request: Request, args:dict):
+
+    def delete(self, request: Request, args: dict):
         pass
-    
+
     def deleteMany(self, reqeust: Request, args: dict):
         pass
 
@@ -263,7 +357,11 @@ class ModelIntent:
                 self.select, optionalArgs=("where",)
             ),
             f"models.{name}.insert": IntentFunction(
-                self.insert, requiredArgs=("_set",)
+                self.insert, requiredArgs=("object",)
+            ),
+            f"models.{name}.insertmany": IntentFunction(
+                self.insertMany,
+                requiredArgs=("objects",),
             ),
         }
 
