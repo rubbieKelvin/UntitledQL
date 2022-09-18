@@ -275,6 +275,9 @@ class ModelIntent:
                 )
             )
 
+        # get model data from select realizers
+        Sr = self.modelConfig.createSerializerClass(role)
+
         # required fields should be a subset of insertable column
         if not set(permission.insert.requiredFields).issubset(permission.insert.column):
             raise Exception(
@@ -323,11 +326,8 @@ class ModelIntent:
                     model = self.modelConfig.model(**obj)
                     model.save()
 
-                    # get model data from select realizers
-                    Sr = self.modelConfig.createSerializerClass(role)
-                    res.append(Sr(model).data)
+                    res.append(model)
 
-                return res
         except (transaction.TransactionManagementError, IntegrityError) as e:
             raise Interruption(
                 t.error(
@@ -336,6 +336,8 @@ class ModelIntent:
                     code=400,
                 )
             )
+
+        return Sr(res, many=True).data
 
     def update(self, request: Request, args: dict):
         _set: dict = args["set"]  # required
@@ -346,10 +348,13 @@ class ModelIntent:
             getattr(request.user, "id", None)
         )
 
-        if not (role and permission and permission.update):
-            raise Interruption(
-                t.error(message="", type="PERMISSION_ERROR", code=401)
-            )
+        if not (
+            role
+            and permission
+            and permission.update
+            and permission.update.check(request, {"pk": pk, "set": _set})
+        ):
+            raise Interruption(t.error(message="", type="PERMISSION_ERROR", code=401))
 
         Sr = self.modelConfig.createSerializerClass(role)
 
@@ -402,7 +407,83 @@ class ModelIntent:
             )
 
     def updateMany(self, request: Request, args: dict):
-        pass
+        """args[objects] should be a list of objects.
+        [{pk: str|int, set: {...}}]
+        """
+        objects = args["objects"]  # required
+
+        role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+        permission = self.modelConfig.permissions.get(role, lambda x: None)(
+            getattr(request.user, "id", None)
+        )
+
+        if not (
+            role
+            and permission
+            and permission.update
+            and all([permission.update.check(request, obj) for obj in objects])
+        ):
+            raise Interruption(t.error(message="", type="PERMISSION_ERROR", code=401))
+
+        Sr = self.modelConfig.createSerializerClass(role)
+
+        models = (
+            self.modelConfig.model.objects.all()
+            if permission.update.row == True
+            else self.modelConfig.model.objects.filter(permission.update.row)
+        )
+
+        res = []  # result
+
+        fields = (
+            [
+                field.name
+                for field in self.modelConfig.model._meta.get_fields()
+                if isinstance(field, Field)
+            ]
+            + [fk for fk in self.modelConfig.foreignKeys.keys()]
+            if permission.update.column == CellFlags.ALL_COLUMNS
+            else permission.update.column
+        )
+
+        try:
+            with transaction.atomic():
+                for obj in objects:
+                    pk = obj["pk"]  # required
+                    _set = obj["set"]  # required
+
+                    obj: Model = models.get(pk=pk)
+
+                    # check if user only included permitted colums in obj
+
+                    for key, value in _set.items():
+                        if not (key in fields):
+                            raise Interruption(
+                                t.error(
+                                    message=f'cannot update "{key}" in {self.modelConfig.name}',
+                                    type="UNKNOWN_KEYS",
+                                    code=400,
+                                )
+                            )
+
+                        setattr(obj, key, value)
+
+                    obj.save(update_fields=_set.keys())
+                    res.append(obj)
+
+        except (self.modelConfig.model.DoesNotExist, IntegrityError) as e:
+            e404 = type(e) == self.modelConfig.model.DoesNotExist
+            raise Interruption(
+                t.error(
+                    message=f"{self.modelConfig.name}(pk={pk}) not found"
+                    if e404
+                    else str(e),
+                    type="OBJECT_NOT_FOUND" if e404 else e.__class__.__name__,
+                    code=404 if e404 else 400,
+                )
+            )
+
+        return Sr(res, many=True).data
 
     def delete(self, request: Request, args: dict):
         pass
@@ -433,6 +514,10 @@ class ModelIntent:
             ModelOperations.UPDATE: (
                 f"models.{name}.update",
                 IntentFunction(self.update, requiredArgs=("pk", "set")),
+            ),
+            ModelOperations.UPDATE_MANY: (
+                f"models.{name}.updatemany",
+                IntentFunction(self.updateMany, requiredArgs=("objects",)),
             ),
         }
 

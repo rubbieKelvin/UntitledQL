@@ -15,7 +15,7 @@ from django.db.models import Q
 
 default = ModelConfig(
     model=User,
-    allowedOperations=ModelOperations.readonly_and_single_write(),
+    allowedOperations=ModelOperations.all(),
     foreignKeys={"projects": ForeignKey(model=Project, type=RelationshipTypes.LIST)},
     permissions={
         "admin": lambda userID: ModelPermissionConfig(
@@ -34,7 +34,7 @@ default = ModelConfig(
             ),
             update=UpdateCheck(
                 column=["email", "is_active"],
-                row=Q(is_active=False),
+                row=True,
             )
         ),
     },
