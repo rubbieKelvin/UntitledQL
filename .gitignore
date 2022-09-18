@@ -1,3 +1,6 @@
 venv
 __pycache__
 *.sqlite3
+build
+dist
+.pytest_cache

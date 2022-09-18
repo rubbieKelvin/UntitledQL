@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "pocket-api"
+name = "uql"
 version = "0.1.0"
-description = "api for task manager"
+description = "Application layer for building Django apps with a breeze"
 authors = ["rubbie kelvin voltsman <rubbiekelvinvoltsman@gmail.com>"]
 license = "GNU"
 
@@ -17,16 +17,19 @@ ipython = "^8.4.0"
 requests = "^2.28.1"
 black = "^22.8.0"
 typing-extensions = "^4.3.0"
+pytest = "^7.1.3"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
+# https://github.com/rubbieKelvin/pyrun
 [pyrun.scripts]
-dev = "python manage.py runserver"
-migrate = "python manage.py makemigrations main; python manage.py migrate"
+test = "python -m pytest --rootdir tests/units/"
+dev = "python tests/app/manage.py runserver"
+migrate = "python tests/app/manage.py makemigrations main; python tests/app/manage.py migrate"
 reset = 'pyrun reset:migration; pyrun reset:db'
-reset_migration = "rm -r apps/**/migrations/"
-reset_db = "rm db.sqlite3"
-super = "export DJANGO_SUPERUSER_PASSWORD=admin; python manage.py createsuperuser --noinput --email admin@app.dev"
-shell = "python manage.py shell"
+reset_migration = "rm -r tests/app/**/migrations/"
+reset_db = "rm tests/app/db.sqlite3"
+super = "export DJANGO_SUPERUSER_PASSWORD=admin; python tests/app/manage.py createsuperuser --noinput --email admin@app.dev"
+shell = "python tests/app/manage.py shell"
