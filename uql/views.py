@@ -126,12 +126,16 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                 if data != None:
                     if isMap(data):
                         return t.response(
-                            data=selectKeys(data, fields), warning=warning
+                            data=selectKeys(data, fields) if fields else data,
+                            warning=warning,
                         )
 
                     elif isArray(data):
                         return t.response(
-                            data=[selectKeys(i, fields) for i in data], warning=warning
+                            data=[selectKeys(i, fields) for i in data]
+                            if fields
+                            else data,
+                            warning=warning,
                         )
 
                 # return
