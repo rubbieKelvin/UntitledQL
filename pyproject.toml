@@ -25,11 +25,11 @@ build-backend = "poetry.core.masonry.api"
 
 # https://github.com/rubbieKelvin/pyrun
 [pyrun.scripts]
-test_unit = "python -m pytest --rootdir tests/units/"
-# dev = "python manage.py runserver"
-# migrate = "python manage.py makemigrations main; python manage.py migrate"
-# reset = 'pyrun reset:migration; pyrun reset:db'
-# reset_migration = "rm -r apps/**/migrations/"
-# reset_db = "rm db.sqlite3"
-# super = "export DJANGO_SUPERUSER_PASSWORD=admin; python manage.py createsuperuser --noinput --email admin@app.dev"
-# shell = "python manage.py shell"
+test = "python -m pytest --rootdir tests/units/"
+dev = "python tests/app/manage.py runserver"
+migrate = "python tests/app/manage.py makemigrations main; python tests/app/manage.py migrate"
+reset = 'pyrun reset:migration; pyrun reset:db'
+reset_migration = "rm -r tests/app/**/migrations/"
+reset_db = "rm tests/app/db.sqlite3"
+super = "export DJANGO_SUPERUSER_PASSWORD=admin; python tests/app/manage.py createsuperuser --noinput --email admin@app.dev"
+shell = "python tests/app/manage.py shell"

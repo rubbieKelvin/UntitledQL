@@ -57,6 +57,7 @@ Conjunction("_and", lambda items: reduce(lambda a, b: a & b, items))
 Conjunction("_not", lambda items: ~reduce(lambda a, b: a & b, items))
 
 # make query func
+# TODO: implement cache
 def makeQuery(query: dict, **kwargs):
     parent = kwargs.get("parent")
     res = []

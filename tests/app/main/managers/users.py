@@ -1,5 +1,5 @@
 from django.contrib.auth.base_user import BaseUserManager
-from apps.main.constants.enums import UserRoles
+from main.constants.enums import UserRoles
 
 
 class CustomUserManager(BaseUserManager):

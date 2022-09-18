@@ -2,8 +2,8 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 
 from uuid import uuid4
-from apps.main.constants.enums import UserRoles
-from apps.main.managers.users import CustomUserManager
+from main.constants.enums import UserRoles
+from main.managers.users import CustomUserManager
 
 
 class User(AbstractBaseUser, PermissionsMixin):
