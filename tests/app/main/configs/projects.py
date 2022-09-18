@@ -1,6 +1,6 @@
 from uql.model import ModelConfig
 from uql.model import ForeignKey
-from uql.model import PermissionUnit
+from uql.model import SelectPermissionUnit
 from uql.model import ModelPermissionConfig
 from uql.constants import CellFlags
 from uql.constants import RelationshipTypes
@@ -15,12 +15,12 @@ default = ModelConfig(
     foreignKeys={"author": ForeignKey(model=User, type=RelationshipTypes.OBJECT)},
     permissions={
         "admin": lambda userID: ModelPermissionConfig(
-            select=PermissionUnit(
+            select=SelectPermissionUnit(
                 row=Q(author__id=userID), column=CellFlags.ALL_COLUMNS
             ),
         ),
         "anonymous": lambda _: ModelPermissionConfig(
-            select=PermissionUnit(
+            select=SelectPermissionUnit(
                 row=Q(is_deleted=False),
                 column=[
                     "id",

@@ -1,8 +1,9 @@
 from uql.model import ModelConfig
 from uql.model import ForeignKey
-from uql.model import InsertCheck
-from uql.model import UpdateCheck
-from uql.model import PermissionUnit
+from uql.model import InsertPermissionUnit
+from uql.model import UpdatePermissionUnit
+from uql.model import SelectPermissionUnit
+from uql.model import DeletePermissionUnit
 from uql.model import ModelPermissionConfig
 from uql.constants import CellFlags
 from uql.constants import RelationshipTypes
@@ -19,23 +20,24 @@ default = ModelConfig(
     foreignKeys={"projects": ForeignKey(model=Project, type=RelationshipTypes.LIST)},
     permissions={
         "admin": lambda userID: ModelPermissionConfig(
-            select=PermissionUnit(row=True, column=CellFlags.ALL_COLUMNS),
+            select=SelectPermissionUnit(row=True, column=CellFlags.ALL_COLUMNS),
         ),
         "anonymous": lambda _: ModelPermissionConfig(
-            select=PermissionUnit(
+            select=SelectPermissionUnit(
                 row=Q(
                     is_active=True,
                 ),
                 column=["email", "role", "id", "projects", "is_active"],
             ),
-            insert=InsertCheck(
+            insert=InsertPermissionUnit(
                 column=["email", "is_active"],
                 requiredFields=["email"],
             ),
-            update=UpdateCheck(
+            update=UpdatePermissionUnit(
                 column=["email", "is_active"],
                 row=True,
-            )
+            ),
+            delete=DeletePermissionUnit(row=True),
         ),
     },
 )

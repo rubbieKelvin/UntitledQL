@@ -23,7 +23,7 @@ class ForeignKey:
 
 
 @dataclass(kw_only=True)
-class PermissionUnit:
+class SelectPermissionUnit:
     """data structure for permission unit"""
 
     column: CellFlags | list[str]
@@ -31,7 +31,14 @@ class PermissionUnit:
 
 
 @dataclass(kw_only=True)
-class InsertCheck:
+class DeletePermissionUnit:
+    """..."""
+
+    row: bool | Q
+
+
+@dataclass(kw_only=True)
+class InsertPermissionUnit:
     """a permission unit for insert operations.
     # check is a function that takes in request and the _set values to check if the values are valid
     """
@@ -44,7 +51,7 @@ class InsertCheck:
 
 
 @dataclass(kw_only=True)
-class UpdateCheck:
+class UpdatePermissionUnit:
     """a permission unit, for updates operations.
     # row is a query to get the list of updatable queryset
     # check is a function that takes in request and the _set values to check if the values are valid
@@ -59,10 +66,10 @@ class UpdateCheck:
 class ModelPermissionConfig:
     """data stutructure for permission config"""
 
-    select: PermissionUnit = None
-    insert: InsertCheck = None
-    update: UpdateCheck = None
-    delete: PermissionUnit = None
+    select: SelectPermissionUnit = None
+    insert: InsertPermissionUnit = None
+    update: UpdatePermissionUnit = None
+    delete: DeletePermissionUnit = None
 
 
 class ModelConfig:
@@ -74,7 +81,7 @@ class ModelConfig:
         model: type[Model],
         foreignKeys: dict[str, ForeignKey] = None,
         permissions: dict[str, Callable[[str | None], ModelPermissionConfig]] = None,
-        allowedOperations: list[ModelOperations] = None
+        allowedOperations: list[ModelOperations] = None,
     ) -> None:
         self.model = model
         self.foreignKeys = foreignKeys or {}
@@ -137,7 +144,7 @@ class ModelConfig:
         # get the permission from function. we do not need to pass the userid
         # as we only govern fetching columns here. we can simply pass None
         permission = self.permissions.get(role, lambda x: None)(None)
-        operationObject: PermissionUnit = permission.select
+        operationObject: SelectPermissionUnit = permission.select
 
         if not (permission and operationObject and operationObject.row):
             raise PermissionError(f'user with role "{role}" cannot select {self.name}')

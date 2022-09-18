@@ -8,7 +8,7 @@ from main.configs import projects
 
 
 class Config(UQLConfig):
-    # raise_exceptions = False
+    raise_exceptions = False
     models: list[ModelConfig] = [
         users.default,
         projects.default,

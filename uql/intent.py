@@ -486,10 +486,58 @@ class ModelIntent:
         return Sr(res, many=True).data
 
     def delete(self, request: Request, args: dict):
-        pass
+        pk = args["pk"]  # required
 
-    def deleteMany(self, reqeust: Request, args: dict):
-        pass
+        role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+        permission = self.modelConfig.permissions.get(role, lambda x: None)(
+            getattr(request.user, "id", None)
+        )
+
+        if not (role and permission and permission.delete):
+            raise Interruption(t.error(message="", type="PERMISSION_ERROR", code=401))
+
+        Sr = self.modelConfig.createSerializerClass(role)
+
+        models = (
+            self.modelConfig.model.objects.all()
+            if permission.delete.row == True
+            else self.modelConfig.model.objects.filter(permission.delete.row)
+        )
+
+        try:
+            obj: Model = models.get(pk=pk)
+            res = Sr(obj).data
+            obj.delete()
+            return res
+        except self.modelConfig.model.DoesNotExist:
+            raise Interruption(t.error(message="", type="OBJECT_NOT_FOUND", code=404))
+
+    def deleteMany(self, request: Request, args: dict):
+        pks = args["pks"]  # required
+
+        role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+        permission = self.modelConfig.permissions.get(role, lambda x: None)(
+            getattr(request.user, "id", None)
+        )
+
+        if not (role and permission and permission.delete):
+            raise Interruption(t.error(message="", type="PERMISSION_ERROR", code=401))
+
+        Sr = self.modelConfig.createSerializerClass(role)
+
+        models = (
+            self.modelConfig.model.objects.all()
+            if permission.delete.row == True
+            else self.modelConfig.model.objects.filter(permission.delete.row)
+        )
+
+        try:
+            objects: Model = [models.get(pk=pk) for pk in pks]
+            res = Sr(objects, many=True).data
+            [obj.delete() for obj in objects]
+            return res
+        except self.modelConfig.model.DoesNotExist:
+            raise Interruption(t.error(message="", type="OBJECT_NOT_FOUND", code=404))
 
     @property
     def intenthandlers(self) -> dict[str, IntentFunction]:
@@ -519,8 +567,17 @@ class ModelIntent:
                 f"models.{name}.updatemany",
                 IntentFunction(self.updateMany, requiredArgs=("objects",)),
             ),
+            ModelOperations.DELETE: (
+                f"models.{name}.delete",
+                IntentFunction(self.delete, requiredArgs=("pk",)),
+            ),
+            ModelOperations.DELETE_MANY: (
+                f"models.{name}.deletemany",
+                IntentFunction(self.delete, requiredArgs=("pks",)),
+            ),
         }
 
+        # filter functions to publish based on configuration
         for i in [*rel.keys()]:
             if not (i in self.modelConfig.allowedOperations):
                 del rel[i]
