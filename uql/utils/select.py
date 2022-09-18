@@ -1,5 +1,6 @@
 from collections.abc import Mapping
-from collections.abc import Sequence
+from .types import isMap
+from .types import isArray
 
 
 def selectKeys(data: Mapping, structure: dict) -> dict:
@@ -8,16 +9,14 @@ def selectKeys(data: Mapping, structure: dict) -> dict:
         if not (key in data):
             raise KeyError(f"{key} doenst exist in root")
 
-        needsValue = bool(val)
-
-        if needsValue:
-            if isinstance(data[key], Mapping):
-                res[key] = selectKeys(data[key], val)
-            elif isinstance(data[key], Sequence):
-                res[key] = [
-                    selectKeys(i, val) if isinstance(val, Mapping) else i
-                    for i in data[key]
-                ]
+        if val:
+            if isMap(data[key]):
+                if isMap(val):
+                    res[key] = selectKeys(data[key], val)
+                else:
+                    res[key] = data[key]
+            elif isArray(data[key]):
+                res[key] = [selectKeys(i, val) if isMap(val) else i for i in data[key]]
             else:
                 res[key] = data[key]
 

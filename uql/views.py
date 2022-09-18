@@ -1,11 +1,12 @@
-from . import templates
 from .config import UQLConfig
+from .intent import ModelIntent
 from .intent import IntentModule
-from .intent import IntentHandler
-from .intent import ModelIntentHandler
+from .intent import IntentFunction
 from .utils import templates as t
 from .utils.select import selectKeys
 from .utils.exceptions import Interruption
+from .utils.types import isArray
+from .utils.types import isMap
 
 from rest_framework.views import APIView
 from rest_framework.request import Request
@@ -61,12 +62,12 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
             functionRoots.update(
                 {f"functions.{k}": v for k, v in wrapper.spread.items()}
             )
-        elif type(wrapper) == IntentHandler:
+        elif type(wrapper) == IntentFunction:
             functionRoots[f"functions.{wrapper.name}"] = wrapper
 
     # load up model roots
     for modelConfig in config.models:
-        modelRoots.update(ModelIntentHandler(config, modelConfig).intenthandlers)
+        modelRoots.update(ModelIntent(config, modelConfig).intenthandlers)
 
     class Adapter(APIView):
         ROOT = {**modelRoots, **functionRoots}
@@ -95,7 +96,7 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                 )
 
             # get the function that handles from root
-            handler: IntentHandler = self.ROOT[intent]
+            handler: IntentFunction = self.ROOT[intent]
 
             warning = (
                 "fields not specified, you might get an empty data"
@@ -108,24 +109,20 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
 
                 # raise an error if the intent handler returned any thing other than
                 # the instances of dict or list or tuple
-                if not (
-                    data == None
-                    or isinstance(data, Mapping)
-                    or isinstance(data, Sequence)
-                ):
+                if not (data == None or isMap(data) or isArray(data)):
                     raise Interruption(
                         t.error(message="intent should return a array or map, none")
                     )
 
                 # if there's no data, do not filter response
                 if data != None:
-                    if isinstance(data, Mapping):
+                    if isMap(data):
                         return t.response(
                             data=selectKeys(data, fields), warning=warning
                         )
 
-                    elif isinstance(data, Sequence):
-                        t.response(
+                    elif isArray(data):
+                        return t.response(
                             data=[selectKeys(i, fields) for i in data], warning=warning
                         )
 

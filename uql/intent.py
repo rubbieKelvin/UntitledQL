@@ -1,6 +1,5 @@
 import re
 
-# from . import templates
 from .model import ModelConfig
 from .config import UQLConfig
 from .constants import CellFlags
@@ -14,14 +13,14 @@ from rest_framework.request import Request
 from django.db.models import Field
 
 
-def _validateModuleName(cls: type[Self], v: str) -> Self:
+def _validateModuleName(v: str) -> Self:
     modelc = re.compile(r"^(\w+[.]?\w+)$")
     if re.match(modelc, v):
         return v
     raise Exception(f"bad module name {v}")
 
 
-def _validateFunctionName(cls: type[Self], v: str) -> Self:
+def _validateFunctionName(v: str) -> Self:
     funcc = re.compile(r"^\w+$")
     if re.match(funcc, v):
         return v
@@ -124,7 +123,9 @@ class ModelIntent:
         Returns:
             _type_: _description_
         """
+        where = args.get("where")
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+
         # get permission config
         # pass the user id here since we're trying to get the rows
         permission = self.modelConfig.permissions.get(role, lambda x: None)(
@@ -142,14 +143,13 @@ class ModelIntent:
                 )
             )
 
-        query = makeQuery(args.get("where"))
+        query = makeQuery(where) if where else None
         models = (
             self.modelConfig.model.objects.all()
             if permission.select.row == True
             else self.modelConfig.model.objects.filter(permission.select.row)
         )
         models = models.filter(query) if query else models
-
         return Sr(models, many=True).data
 
     def insert(self, request: Request, args: dict):

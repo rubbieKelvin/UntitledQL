@@ -6,7 +6,9 @@ def error(*, message: str, type: str = "ERR_UNSPECIFIED", code: int = None):
     )
 
 
-def response(data, error: dict = None, warning: str = None, code: int = 200, **meta):
+def response(
+    data=None, error: dict = None, warning: str = None, code: int = 200, **meta
+):
     return dict(
         meta={
             "has_error": error != None,

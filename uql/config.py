@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class UQLConfig:
-    raise_exceptions = False  # raise exception if an error occurs in intent handler
+    raise_exceptions = True  # raise exception if an error occurs in intent handler
     models: list[ModelConfig] = []  # model configurations for unrest
     functions: list[IntentFunction|IntentModule] = []  # functions config for unrest
 
