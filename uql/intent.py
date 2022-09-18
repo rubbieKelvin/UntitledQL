@@ -14,7 +14,7 @@ from typing_extensions import Self
 from rest_framework.request import Request
 
 from django.db import transaction
-from django.db.models import Field
+from django.db.models import Field, Model
 from django.db.utils import IntegrityError
 
 
@@ -338,7 +338,68 @@ class ModelIntent:
             )
 
     def update(self, request: Request, args: dict):
-        pass
+        _set: dict = args["set"]  # required
+        pk: int | str = args["pk"]  # required
+
+        role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+        permission = self.modelConfig.permissions.get(role, lambda x: None)(
+            getattr(request.user, "id", None)
+        )
+
+        if not (role and permission and permission.update):
+            raise Interruption(
+                t.error(message="", type="PERMISSION_ERROR", code=401)
+            )
+
+        Sr = self.modelConfig.createSerializerClass(role)
+
+        models = (
+            self.modelConfig.model.objects.all()
+            if permission.update.row == True
+            else self.modelConfig.model.objects.filter(permission.update.row)
+        )
+
+        try:
+            obj: Model = models.get(pk=pk)
+
+            # check if user only included permitted colums in obj
+            fields = (
+                [
+                    field.name
+                    for field in self.modelConfig.model._meta.get_fields()
+                    if isinstance(field, Field)
+                ]
+                + [fk for fk in self.modelConfig.foreignKeys.keys()]
+                if permission.update.column == CellFlags.ALL_COLUMNS
+                else permission.update.column
+            )
+
+            for key, value in _set.items():
+                if not (key in fields):
+                    raise Interruption(
+                        t.error(
+                            message=f'cannot update "{key}" in {self.modelConfig.name}',
+                            type="UNKNOWN_KEYS",
+                            code=400,
+                        )
+                    )
+
+                setattr(obj, key, value)
+
+            obj.save(update_fields=_set.keys())
+            return Sr(obj).data
+
+        except (self.modelConfig.model.DoesNotExist, IntegrityError) as e:
+            e404 = type(e) == self.modelConfig.model.DoesNotExist
+            raise Interruption(
+                t.error(
+                    message=f"{self.modelConfig.name}(pk={pk}) not found"
+                    if e404
+                    else str(e),
+                    type="OBJECT_NOT_FOUND" if e404 else e.__class__.__name__,
+                    code=404 if e404 else 400,
+                )
+            )
 
     def updateMany(self, request: Request, args: dict):
         pass
@@ -355,20 +416,23 @@ class ModelIntent:
 
         rel = {
             ModelOperations.SELECT: (
-                f"models.{name}.select", IntentFunction(
-                    self.select, optionalArgs=("where",)
-                )
+                f"models.{name}.select",
+                IntentFunction(self.select, optionalArgs=("where",)),
             ),
             ModelOperations.INSERT: (
-                f"models.{name}.insert", IntentFunction(
-                    self.insert, requiredArgs=("object",)
-                )
+                f"models.{name}.insert",
+                IntentFunction(self.insert, requiredArgs=("object",)),
             ),
             ModelOperations.INSERT_MANY: (
-                f"models.{name}.insertmany", IntentFunction(
+                f"models.{name}.insertmany",
+                IntentFunction(
                     self.insertMany,
                     requiredArgs=("objects",),
                 ),
+            ),
+            ModelOperations.UPDATE: (
+                f"models.{name}.update",
+                IntentFunction(self.update, requiredArgs=("pk", "set")),
             ),
         }
 
@@ -377,6 +441,7 @@ class ModelIntent:
                 del rel[i]
 
         return dict([pair for pair in rel.values()])
+
 
 class IntentModule:
     def __init__(self, name: str, functions: list[IntentFunction]) -> None:

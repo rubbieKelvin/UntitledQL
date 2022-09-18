@@ -1,6 +1,7 @@
 from uql.model import ModelConfig
 from uql.model import ForeignKey
 from uql.model import InsertCheck
+from uql.model import UpdateCheck
 from uql.model import PermissionUnit
 from uql.model import ModelPermissionConfig
 from uql.constants import CellFlags
@@ -31,6 +32,10 @@ default = ModelConfig(
                 column=["email", "is_active"],
                 requiredFields=["email"],
             ),
+            update=UpdateCheck(
+                column=["email", "is_active"],
+                row=Q(is_active=False),
+            )
         ),
     },
 )
