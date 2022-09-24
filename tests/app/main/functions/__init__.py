@@ -1,5 +1,6 @@
-from . import main
+from . import auth
 
 functions = [
-    main.default
+    auth.signup,
+    auth.login,
 ]

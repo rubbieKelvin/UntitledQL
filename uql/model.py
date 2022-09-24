@@ -26,7 +26,10 @@ class ForeignKey:
 class SelectPermissionUnit:
     """data structure for permission unit"""
 
+    # these are the columns, permitted to be read
     column: CellFlags | list[str]
+
+    # queries the rows that could be read
     row: bool | Q
 
 
@@ -34,17 +37,24 @@ class SelectPermissionUnit:
 class DeletePermissionUnit:
     """..."""
 
+    # queries the row that could be deleted
     row: bool | Q
 
 
 @dataclass(kw_only=True)
 class InsertPermissionUnit:
     """a permission unit for insert operations.
-    # check is a function that takes in request and the _set values to check if the values are valid
+    - check is a function that takes in request and the _set values to check if the values are valid
     """
 
+    # the columns that are allowed to be inserted
     column: CellFlags | list[str]
+    
+    # the columns that must be inserted
     requiredFields: list[str]
+    
+    # checks the data that's about to be inserted.
+    # if false, insertion will not be permitted
     check: Callable[
         [Request, Any], bool
     ] = lambda req, _set: True  # takes in request and the attrs to set
@@ -53,12 +63,18 @@ class InsertPermissionUnit:
 @dataclass(kw_only=True)
 class UpdatePermissionUnit:
     """a permission unit, for updates operations.
-    # row is a query to get the list of updatable queryset
-    # check is a function that takes in request and the _set values to check if the values are valid
+    - row is a query to get the list of updatable queryset
+    - check is a function that takes in request and the _set values to check if the values are valid
     """
 
+    # the columns that could be updated
     column: CellFlags | list[str]
+    
+    # the possible rows that could be updated
     row: bool | Q
+    
+    # checks the data that's about to be updated,
+    # if it returns false, update will not be allowed
     check: Callable[[Request, Any], bool] = lambda req, _set: True
 
 
@@ -70,6 +86,17 @@ class ModelPermissionConfig:
     insert: InsertPermissionUnit = None
     update: UpdatePermissionUnit = None
     delete: DeletePermissionUnit = None
+
+    @staticmethod
+    def fullaccess():
+        return ModelPermissionConfig(
+            delete=DeletePermissionUnit(row=True),
+            select=SelectPermissionUnit(column=CellFlags.ALL_COLUMNS, row=True),
+            insert=InsertPermissionUnit(
+                column=CellFlags.ALL_COLUMNS, requiredFields=[]
+            ),
+            update=UpdatePermissionUnit(column=CellFlags.ALL_COLUMNS, row=True),
+        )
 
 
 class ModelConfig:
@@ -144,7 +171,11 @@ class ModelConfig:
         # get the permission from function. we do not need to pass the userid
         # as we only govern fetching columns here. we can simply pass None
         permission = self.permissions.get(role, lambda x: None)(None)
-        operationObject: SelectPermissionUnit = permission.select
+
+        try:
+            operationObject: SelectPermissionUnit = permission.select
+        except AttributeError as e:
+            raise PermissionError(f'user with role "{role}" cannot select {self.name}')
 
         if not (permission and operationObject and operationObject.row):
             raise PermissionError(f'user with role "{role}" cannot select {self.name}')

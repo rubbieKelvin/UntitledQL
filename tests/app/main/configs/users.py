@@ -10,34 +10,31 @@ from uql.constants import RelationshipTypes
 from uql.constants import ModelOperations
 
 from main.models.users import User
-from main.models.projects import Project
+from main.models.notes import Note
 
 from django.db.models import Q
 
 default = ModelConfig(
     model=User,
-    allowedOperations=ModelOperations.all(),
-    foreignKeys={"projects": ForeignKey(model=Project, type=RelationshipTypes.LIST)},
+    allowedOperations=[ModelOperations.SELECT_ONE, ModelOperations.UPDATE],
+    foreignKeys={"notes": ForeignKey(model=Note, type=RelationshipTypes.LIST)},
     permissions={
-        "admin": lambda userID: ModelPermissionConfig(
-            select=SelectPermissionUnit(row=True, column=CellFlags.ALL_COLUMNS),
-        ),
-        "anonymous": lambda _: ModelPermissionConfig(
+        "admin": lambda user: ModelPermissionConfig.fullaccess(),
+        "user": lambda user: ModelPermissionConfig(
             select=SelectPermissionUnit(
-                row=Q(
-                    is_active=True,
-                ),
-                column=["email", "role", "id", "projects", "is_active"],
-            ),
-            insert=InsertPermissionUnit(
-                column=["email", "is_active"],
-                requiredFields=["email"],
+                row=Q(is_active=True, id=user),
+                column=[
+                    "email",
+                    "id",
+                    "notes",
+                ],
             ),
             update=UpdatePermissionUnit(
-                column=["email", "is_active"],
-                row=True,
+                column=[
+                    "email",
+                ],
+                row=Q(is_active=True, id=user),
             ),
-            delete=DeletePermissionUnit(row=True),
         ),
     },
 )

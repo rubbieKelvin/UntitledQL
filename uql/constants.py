@@ -11,7 +11,8 @@ class RelationshipTypes(Enum):
 
 
 class ModelOperations(Enum):
-    SELECT = 1
+    SELECT_ONE = 0
+    SELECT_MANY = 1
     INSERT = 2
     INSERT_MANY = 3
     UPDATE = 4
@@ -22,7 +23,8 @@ class ModelOperations(Enum):
     @staticmethod
     def all():
         return [
-            ModelOperations.SELECT,
+            ModelOperations.SELECT_ONE,
+            ModelOperations.SELECT_MANY,
             ModelOperations.INSERT,
             ModelOperations.INSERT_MANY,
             ModelOperations.UPDATE,
@@ -33,12 +35,13 @@ class ModelOperations(Enum):
 
     @staticmethod
     def readonly():
-        return [ModelOperations.SELECT]
+        return [ModelOperations.SELECT_ONE, ModelOperations.SELECT_MANY]
 
     @staticmethod
     def readonly_and_single_write():
         return [
-            ModelOperations.SELECT,
+            ModelOperations.SELECT_ONE,
+            ModelOperations.SELECT_MANY,
             ModelOperations.INSERT,
             ModelOperations.UPDATE,
             ModelOperations.DELETE,

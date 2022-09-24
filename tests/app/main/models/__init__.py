@@ -1,7 +1,7 @@
 from .users import User
-from .projects import Project
+from .notes import Note
 
 models = [
     User,
-    Project
+    Note
 ]
