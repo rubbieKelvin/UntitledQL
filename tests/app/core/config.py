@@ -4,17 +4,17 @@ from uql.intent import IntentFunction, IntentModule
 
 from main.models.users import User
 from main.configs import users
-from main.configs import projects
-from main.functions import functions
+from main.configs import notes
+from main.functions import functions as fx
 
 
 class Config(UQLConfig):
-    # raise_exceptions = False
+    raise_exceptions = True
     models: list[ModelConfig] = [
         users.default,
-        projects.default,
+        notes.default,
     ]
-    functions: list[IntentFunction | IntentModule] = functions
+    functions: list[IntentFunction | IntentModule] = fx
 
     @staticmethod
     def getAuthenticatedUserRoles(user: User) -> str:

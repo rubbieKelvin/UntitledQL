@@ -115,7 +115,49 @@ class ModelIntent:
         self.modelConfig = modelConfig
         self.rootConfig = rootConfig
 
-    def select(self, request: Request, args: dict):
+    def find(self, request: Request, args: dict):
+        """returns a single object from models
+
+        Args:
+            request (Request): _description_
+            args (dict): _description_
+
+        Raises:
+            Interruption: _description_
+
+        Returns:
+            _type_: _description_
+        """
+        where = args.get("where")
+        role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+
+        # get permission config
+        # pass the user id here since we're trying to get the rows
+        permission = self.modelConfig.permissions.get(role, lambda x: None)(
+            getattr(request.user, "id", None)
+        )
+
+        try:
+            Sr = self.modelConfig.createSerializerClass(role)
+        except PermissionError as e:
+            raise Interruption(
+                t.error(
+                    message=str(e),
+                    type="PERMISSION_ERROR",
+                    code=401,
+                )
+            )
+
+        query = makeQuery(where) if where else None
+        models = (
+            self.modelConfig.model.objects.all()
+            if permission.select.row == True
+            else self.modelConfig.model.objects.filter(permission.select.row)
+        )
+        instance = models.get(query) if query else models.first()
+        return Sr(instance).data
+
+    def selectMany(self, request: Request, args: dict):
         """Select items of a model.
 
         Args:
@@ -544,9 +586,13 @@ class ModelIntent:
         name = self.modelConfig.name
 
         rel = {
-            ModelOperations.SELECT: (
-                f"models.{name}.select",
-                IntentFunction(self.select, optionalArgs=("where",)),
+            ModelOperations.SELECT_ONE: {
+                f"models.{name}.find",
+                IntentFunction(self.find, requiredArgs=("where",)),
+            },
+            ModelOperations.SELECT_MANY: (
+                f"models.{name}.selectmany",
+                IntentFunction(self.selectMany, optionalArgs=("where",)),
             ),
             ModelOperations.INSERT: (
                 f"models.{name}.insert",

@@ -82,7 +82,10 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
 
             # specifies the return type of the function;
             # should only be used on dicts or lists of dicts
-            fields = body.get("fields", {})
+            # -- "$all" : include all fields
+            # -- dict   : include selected fields
+            # -- None   : no fields
+            fields = body.get("fields")
 
             # arguments are values to be passed into the handler function
             # there are required and optional arguments, so the keys in this data should meet the requirements
@@ -124,19 +127,23 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
 
                 # if there's no data, do not filter response
                 if data != None:
+                    # psuedo data function
+                    _data = lambda: data
                     if isMap(data):
-                        return t.response(
-                            data=selectKeys(data, fields) if fields else data,
-                            warning=warning,
-                        )
+                        _data = lambda: selectKeys(data, fields)
+                    else:
+                        _data = lambda: [selectKeys(i, fields) for i in data]
 
-                    elif isArray(data):
-                        return t.response(
-                            data=[selectKeys(i, fields) for i in data]
-                            if fields
-                            else data,
-                            warning=warning,
-                        )
+                    # check fields to compute result
+                    if fields == None:
+                        result = None
+                    elif fields == "$all":
+                        result = data
+                    else:
+                        result = _data()
+
+                    # return result
+                    return t.response(data=result, warning=warning)
 
                 # return
                 return t.response(data=None, warning=warning)
@@ -153,6 +160,7 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                     else t.error(
                         message=f'error running "{intent}": {e}',
                         code=400,
+                        type=e.__class__.__name__,
                     )
                 )
 
