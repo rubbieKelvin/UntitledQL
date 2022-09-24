@@ -20,7 +20,8 @@ def _note_user_insert_check(req: Request, _set: dict[str, str]):
     user: User = req.user
     author = _set["author"]
     name = _set["name"]
-    return user.pk == author and len(name or "") > 0
+
+    return (author == str(user.pk)) and (len(name or "") > 0)
 
 
 default = ModelConfig(

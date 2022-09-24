@@ -2,3 +2,4 @@
 DEBUG = True
 SECRET_KEY = "django-insecure-r6@rps9sl6lql4s+jpn=e1_d^nmm8qgv!cvmx=!bt^$1m-kuyj"
 ALLOWED_HOSTS = []
+CORS_ALLOW_ALL_ORIGINS = True

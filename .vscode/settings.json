@@ -1,0 +1,6 @@
+{
+    "npm.useRootDirectory": true,
+    "npm.includeDirectories": [
+        "tests/app/"
+    ]
+}

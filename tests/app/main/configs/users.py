@@ -23,11 +23,7 @@ default = ModelConfig(
         "user": lambda user: ModelPermissionConfig(
             select=SelectPermissionUnit(
                 row=Q(is_active=True, id=user),
-                column=[
-                    "email",
-                    "id",
-                    "notes",
-                ],
+                column=["email", "id", "notes", "date_created"],
             ),
             update=UpdatePermissionUnit(
                 column=[

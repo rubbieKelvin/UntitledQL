@@ -1,31 +1,42 @@
-<script setup lang="ts">
-// This starter template is using Vue 3 <script setup> SFCs
-// Check out https://vuejs.org/api/sfc-script-setup.html#script-setup
-import HelloWorld from './components/HelloWorld.vue'
-</script>
-
 <template>
   <div>
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
+    <Init v-if="currentState === 'init'" @auth="onLoad" />
+    <Signup
+      v-if="currentState === navigationStates.SIGNUP"
+      @success="currentState = 'home'"
+    />
+    <Home v-else-if="currentState === navigationStates.HOME" />
   </div>
-  <HelloWorld msg="Vite + Vue" />
 </template>
 
-<style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
-}
-</style>
+<script lang="ts">
+import { defineComponent, provide } from "vue";
+import useNavigation, { navigationStates, STATE } from "./composables/navigation";
+import Signup from "./states/Signup.vue";
+import Home from "./states/Home/index.vue";
+import Init from "./states/Init.vue";
+import { User } from "./models/types";
+
+export default defineComponent({
+  components: { Signup, Home, Init },
+  setup() {
+    const navigation = useNavigation();
+
+    provide('navigation', {
+      state: navigation.state,
+      updateState(value: STATE){
+        navigation.state.value = value
+      }
+    })
+
+    function onLoad(data: User | false) {
+      if (data) {
+        navigation.state.value = "home";
+      } else {
+        navigation.state.value = "signup";
+      }
+    }
+    return { currentState: navigation.state, navigationStates, onLoad };
+  },
+});
+</script>

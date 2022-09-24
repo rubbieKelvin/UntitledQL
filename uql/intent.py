@@ -265,6 +265,17 @@ class ModelIntent:
                     )
                 )
 
+            # foriegn keys need to be passed by object
+            # we might have an input that tries to insert author="author-pk" in Book modek
+            # but book.author has to be an Object not a string. so we check to see if Book config
+            # has any foriegn key config attached names author, then we map "author-pk"...
+            # to it's respective object
+            fk = self.modelConfig.foreignKeys.get(key)
+            if fk:
+                # if key is a foriegn key, change the string or integer pk to an item
+                # that correspond to its model object
+                obj[key] = fk.getObject(obj[key])
+
         try:
             # create model
             model = self.modelConfig.model(**obj)
@@ -363,6 +374,17 @@ class ModelIntent:
                                     code=400,
                                 )
                             )
+
+                        # foriegn keys need to be passed by object
+                        # we might have an input that tries to insert author="author-pk" in Book modek
+                        # but book.author has to be an Object not a string. so we check to see if Book config
+                        # has any foriegn key config attached names author, then we map "author-pk"...
+                        # to it's respective object
+                        fk = self.modelConfig.foreignKeys.get(key)
+                        if fk:
+                            # if key is a foriegn key, change the string or integer pk to an item
+                            # that correspond to its model object
+                            obj[key] = fk.getObject(obj[key])
 
                     # create model
                     model = self.modelConfig.model(**obj)

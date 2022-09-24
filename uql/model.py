@@ -21,6 +21,10 @@ class ForeignKey:
     model: type[Model]
     type: RelationshipTypes
 
+    def getObject(self, pk: str | int) -> Model:
+        # would raise DoNotExist exception if not found
+        return self.model.objects.get(pk=pk)
+
 
 @dataclass(kw_only=True)
 class SelectPermissionUnit:
@@ -49,10 +53,10 @@ class InsertPermissionUnit:
 
     # the columns that are allowed to be inserted
     column: CellFlags | list[str]
-    
+
     # the columns that must be inserted
     requiredFields: list[str]
-    
+
     # checks the data that's about to be inserted.
     # if false, insertion will not be permitted
     check: Callable[
@@ -69,10 +73,10 @@ class UpdatePermissionUnit:
 
     # the columns that could be updated
     column: CellFlags | list[str]
-    
+
     # the possible rows that could be updated
     row: bool | Q
-    
+
     # checks the data that's about to be updated,
     # if it returns false, update will not be allowed
     check: Callable[[Request, Any], bool] = lambda req, _set: True

@@ -102,7 +102,9 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                 return t.response(
                     data=None,
                     error=t.error(
-                        message="intent does not exist", type="INEXISTENT_INTENT"
+                        message="intent does not exist",
+                        type="INEXISTENT_INTENT",
+                        code=400,
                     ),
                 )
 
