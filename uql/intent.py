@@ -63,6 +63,16 @@ class IntentFunction:
         self.allowUnknownArgs = allowUnknownArgs
         self._handler = handler
 
+    def json(self) -> dict:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "requiredArgs": self.requiredArgs,
+            "optionalArgs": self.optionalArgs,
+            "defaultValues": self.defaultValues,
+            "allowUnknownArgs": self.allowUnknownArgs,
+        }
+
     def __str__(self) -> str:
         return self.name
 
@@ -608,10 +618,10 @@ class ModelIntent:
         name = self.modelConfig.name
 
         rel = {
-            ModelOperations.SELECT_ONE: {
+            ModelOperations.SELECT_ONE: (
                 f"models.{name}.find",
                 IntentFunction(self.find, requiredArgs=("where",)),
-            },
+            ),
             ModelOperations.SELECT_MANY: (
                 f"models.{name}.selectmany",
                 IntentFunction(self.selectMany, optionalArgs=("where",)),
