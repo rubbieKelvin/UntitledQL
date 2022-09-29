@@ -26,7 +26,8 @@ build-backend = "poetry.core.masonry.api"
 
 # https://github.com/rubbieKelvin/pyrun
 [pyrun.scripts]
-test = "python -m pytest --rootdir tests/units/"
+test_api = "python tests/app/manage.py test main.tests"
+test_unit = "python -m pytest --rootdir tests/units/"
 dev = "python tests/app/manage.py runserver"
 vue = "yarn --cwd tests/app dev"
 migrate = "python tests/app/manage.py makemigrations main; python tests/app/manage.py migrate"

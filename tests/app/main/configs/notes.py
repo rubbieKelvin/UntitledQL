@@ -3,9 +3,8 @@ from uql.model import ForeignKey
 from uql.model import InsertPermissionUnit
 from uql.model import UpdatePermissionUnit
 from uql.model import SelectPermissionUnit
-from uql.model import DeletePermissionUnit
 from uql.model import ModelPermissionConfig
-from uql.constants import CellFlags
+
 from uql.constants import RelationshipTypes
 from uql.constants import ModelOperations
 

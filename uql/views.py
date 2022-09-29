@@ -1,5 +1,5 @@
 from .config import UQLConfig
-from .intent import ModelIntent
+from .intent.model import ModelIntent
 from .intent import IntentModule
 from .intent import IntentFunction
 from .utils import templates as t
@@ -7,16 +7,20 @@ from .utils.select import selectKeys
 from .utils.exceptions import Interruption
 from .utils.types import isArray
 from .utils.types import isMap
+from .tests import infrastructure
 
 from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from collections.abc import Mapping
-from collections.abc import Sequence
+
+class _UQLView(APIView):
+    @staticmethod
+    def usingInfrastructure(request: infrastructure.Request) -> Response:
+        ...
 
 
-def UQLView(config: type[UQLConfig]) -> type[APIView]:
+def UQLView(config: type[UQLConfig]) -> type[_UQLView]:
     """Creates an APIView class that is built on config.
 
     Args:
@@ -70,7 +74,14 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
         modelRoots.update(ModelIntent(config, modelConfig).intenthandlers)
 
     class Adapter(APIView):
-        ROOT = {**modelRoots, **functionRoots}
+        ROOT: dict[str, IntentFunction] = {**modelRoots, **functionRoots}
+
+        def get(self, request: Request) -> Response:
+            if config.show_docs:
+                root = self.ROOT
+                result = {key: {**val.json(), "name": key} for key, val in root.items()}
+                return Response(result)
+            return Response(data={"msg": 'set "show_docs" to True in uql config'})
 
         @response_decorator
         def post(self, request: Request) -> Response:
@@ -89,7 +100,7 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
 
             # arguments are values to be passed into the handler function
             # there are required and optional arguments, so the keys in this data should meet the requirements
-            arguments = body.get("args", {})
+            arguments = body.get("args") or {}
 
             # intents are required to use this app
             if intent == None:
@@ -165,5 +176,12 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                         type=e.__class__.__name__,
                     )
                 )
+
+        @staticmethod
+        def usingInfrastructure(request: infrastructure.Request) -> Response:
+            _uql = Adapter()
+            if request.method.lower() == "get":
+                return _uql.get(request)
+            return _uql.post(request)
 
     return Adapter
