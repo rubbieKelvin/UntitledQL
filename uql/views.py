@@ -52,6 +52,8 @@ def UQLView(config: type[UQLConfig]) -> type[_UQLView]:
                     )
                 )
 
+            if type(res) == list:
+                return Response(res, status=200)
             return Response(res, status=res["meta"]["status_code"])
 
         return _
@@ -85,97 +87,119 @@ def UQLView(config: type[UQLConfig]) -> type[_UQLView]:
 
         @response_decorator
         def post(self, request: Request) -> Response:
+            def handleIntent(
+                intent: str, fields: str | dict = None, arguments: dict = None
+            ):
+                # intents are required to use this app
+                if intent == None:
+                    return t.response(
+                        data=None,
+                        error=t.error(message="intent not provided", type="NO_INTENT"),
+                    )
+
+                if not (intent in self.ROOT):
+                    return t.response(
+                        data=None,
+                        error=t.error(
+                            message="intent does not exist",
+                            type="INEXISTENT_INTENT",
+                            code=400,
+                        ),
+                    )
+
+                # get the function that handles from root
+                handler: IntentFunction = self.ROOT[intent]
+
+                warning = (
+                    "fields not specified, you might get an empty data"
+                    if not fields
+                    else None
+                )
+
+                try:
+                    data = handler(request, arguments)
+
+                    # raise an error if the intent handler returned any thing other than
+                    # the instances of dict or list or tuple
+                    if not (data == None or isMap(data) or isArray(data)):
+                        raise Interruption(
+                            t.error(message="intent should return a array or map, none")
+                        )
+
+                    # if there's no data, do not filter response
+                    if data != None:
+                        # psuedo data function
+                        _data = lambda: data
+                        if isMap(data):
+                            _data = lambda: selectKeys(data, fields)
+                        else:
+                            _data = lambda: [selectKeys(i, fields) for i in data]
+
+                        # check fields to compute result
+                        if fields == None:
+                            result = None
+                        elif fields == "$all":
+                            result = data
+                        else:
+                            result = _data()
+
+                        # return result
+                        return t.response(data=result, warning=warning)
+
+                    # return
+                    return t.response(data=None, warning=warning)
+
+                except Exception as e:
+
+                    # catch all exceptions and return them as error response
+                    if config.raise_exceptions:
+                        raise e
+
+                    return t.response(
+                        error=e.errortemplate
+                        if type(e) == Interruption
+                        else t.error(
+                            message=f'error running "{intent}": {e}',
+                            code=400,
+                            type=e.__class__.__name__,
+                        )
+                    )
+
             # get response data
             body = request.data
 
-            # tells the app what function to call
-            intent = body.get("intent")
+            if type(body) == dict:
 
-            # specifies the return type of the function;
-            # should only be used on dicts or lists of dicts
-            # -- "$all" : include all fields
-            # -- dict   : include selected fields
-            # -- None   : no fields
-            fields = body.get("fields")
+                # tells the app what function to call
+                intent = body.get("intent")
 
-            # arguments are values to be passed into the handler function
-            # there are required and optional arguments, so the keys in this data should meet the requirements
-            arguments = body.get("args") or {}
+                # specifies the return type of the function;
+                # should only be used on dicts or lists of dicts
+                # -- "$all" : include all fields
+                # -- dict   : include selected fields
+                # -- None   : no fields
+                fields = body.get("fields")
 
-            # intents are required to use this app
-            if intent == None:
-                return t.response(
-                    data=None,
-                    error=t.error(message="intent not provided", type="NO_INTENT"),
-                )
+                # arguments are values to be passed into the handler function
+                # there are required and optional arguments, so the keys in this data should meet the requirements
+                arguments = body.get("args") or {}
 
-            if not (intent in self.ROOT):
-                return t.response(
-                    data=None,
-                    error=t.error(
-                        message="intent does not exist",
-                        type="INEXISTENT_INTENT",
-                        code=400,
-                    ),
-                )
+                return handleIntent(intent, fields, arguments)
 
-            # get the function that handles from root
-            handler: IntentFunction = self.ROOT[intent]
+            elif type(body) == list:
 
-            warning = (
-                "fields not specified, you might get an empty data"
-                if not fields
-                else None
-            )
+                # multiple intents
+                # sadly this is synchronous
+                body: list[dict]
 
-            try:
-                data = handler(request, arguments)
-
-                # raise an error if the intent handler returned any thing other than
-                # the instances of dict or list or tuple
-                if not (data == None or isMap(data) or isArray(data)):
-                    raise Interruption(
-                        t.error(message="intent should return a array or map, none")
+                return [
+                    handleIntent(
+                        cell.get("intent"), cell.get("fields"), cell.get("args") or {}
                     )
-
-                # if there's no data, do not filter response
-                if data != None:
-                    # psuedo data function
-                    _data = lambda: data
-                    if isMap(data):
-                        _data = lambda: selectKeys(data, fields)
-                    else:
-                        _data = lambda: [selectKeys(i, fields) for i in data]
-
-                    # check fields to compute result
-                    if fields == None:
-                        result = None
-                    elif fields == "$all":
-                        result = data
-                    else:
-                        result = _data()
-
-                    # return result
-                    return t.response(data=result, warning=warning)
-
-                # return
-                return t.response(data=None, warning=warning)
-
-            except Exception as e:
-
-                # catch all exceptions and return them as error response
-                if config.raise_exceptions:
-                    raise e
-
-                return t.response(
-                    error=e.errortemplate
-                    if type(e) == Interruption
-                    else t.error(
-                        message=f'error running "{intent}": {e}',
-                        code=400,
-                        type=e.__class__.__name__,
-                    )
-                )
+                    for cell in body
+                ]
+            else:
+                raise TypeError(f"unknown body type: {type(body)}")
 
         @staticmethod
         def usingInfrastructure(request: infrastructure.Request) -> Response:
