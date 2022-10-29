@@ -1,5 +1,4 @@
 from django.db.models import Q
-from uql.utils.query import QKeyword
 from uql.utils.query import makeQuery
 
 

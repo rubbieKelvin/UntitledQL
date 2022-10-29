@@ -1,37 +1,28 @@
 import re
-
 from uql.utils import templates as t
-from uql.utils.exceptions import Interruption
-
+from uql.exceptions import RequestHandlingError
+from uql.constants import errors as errorConstants
 from typing import Callable, Any
-from typing_extensions import Self
-
 from rest_framework.request import Request
+from uql.constants import types
 
 
-def _validateModuleName(v: str) -> Self:
-    modelc = re.compile(r"^(\w+[.]?\w+)$")
-    if re.match(modelc, v):
-        return v
-    raise Exception(f"bad module name {v}")
-
-
-def _validateFunctionName(v: str) -> Self:
+def _validateFunctionName(name: str) -> str:
     funcc = re.compile(r"^\w+$")
-    if re.match(funcc, v):
-        return v
-    raise Exception(f"bad function name {v}")
+    if re.match(funcc, name):
+        return name
+    raise Exception(f"bad function name {name}")
 
 
 class IntentFunction:
     def __init__(
         self,
-        handler: Callable[[Request, dict[str, Any]], dict | list | tuple],
-        name: str = None,
-        description: str = None,
-        requiredArgs: tuple = None,
-        optionalArgs: tuple = None,
-        defaultValues: dict = None,
+        handler: Callable[[Request, dict[str, Any]], types.IntentResult],
+        name: str | None = None,
+        description: str | None = None,
+        requiredArgs: tuple | None = None,
+        optionalArgs: tuple | None = None,
+        defaultValues: dict | None = None,
         allowUnknownArgs=False,
     ) -> None:
         """_summary_
@@ -70,52 +61,34 @@ class IntentFunction:
     def __repr__(self) -> str:
         return f"{self.name}({','.join([i for i in self.args])})"
 
-    def __call__(
-        self, request: Request, options: dict[str, Any]
-    ) -> dict | list | tuple:
+    def __call__(self, request: Request, options: dict[str, Any]) -> types.IntentResult:
         # check if required args are present
         if not (self.requiredArgs.issubset(options.keys())):
-            raise Interruption(
-                t.error(
-                    message=f'required keys "{self.requiredArgs.difference(options.keys())}" not given in argument',
-                    code=400,
-                    type="MISSING_REQUIRED_ARGS",
-                )
+            raise RequestHandlingError(
+                f'Required keys "{self.requiredArgs.difference(options.keys())}" not given in argument',
+                errorCode=errorConstants.MISSING_REQUIRED_ARGUMENT,
+                statusCode=400,
             )
 
         # if required args have default argument, raise an error
         if self.defaultValues and set(self.defaultValues.keys()).issubset(
             self.requiredArgs
         ):
-            raise Interruption(
-                t.error(
-                    message="required arguments should not have default values",
-                    code=400,
-                    type="DEFAULT_ON_REQUIRED_ARGS",
-                )
+            raise RequestHandlingError(
+                "Required arguments should not have default values",
+                errorCode=errorConstants.DEFAULT_ON_REQUIRED_ARGS,
+                statusCode=500,
             )
 
         # if we do mind foreign args, check if all arg in oprions was specified
         if not self.allowUnknownArgs and not set(options.keys()).issubset(self.args):
-            raise Interruption(
-                t.error(
-                    message=f'unknown keys "{set(options.keys()).difference(self.args)}"',
-                    code=400,
-                    type="UNKNOWN_ARGS",
-                )
+            raise RequestHandlingError(
+                f'Unknown keys "{set(options.keys()).difference(self.args)}"',
+                errorCode=errorConstants.UNKNOWN_ARGS,
+                statusCode=400,
             )
 
         for key, val in self.defaultValues.items():
             options.setdefault(key, val)
 
         return self._handler(request, options)
-
-
-class IntentModule:
-    def __init__(self, name: str, functions: list[IntentFunction]) -> None:
-        self.name = _validateModuleName(name)
-        self.functions = functions
-
-    @property
-    def spread(self) -> dict[str, IntentFunction]:
-        return {f"{self.name}.{intent.name}": intent for intent in self.functions}

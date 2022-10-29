@@ -1,10 +1,18 @@
 from uql.model import ModelConfig
+from uql.model import PartialUpdateTyping
+from uql.model import ModelPermissionTyping
+from uql.model import SelectPermissionTyping
+from uql.model import UpdatePermissionTyping
+from uql.model import DeletePermissionTyping
+from uql.model import InsertPermissionTyping
 from uql.config import UQLConfig
 from uql.constants import CellFlags
 from uql.constants import ModelOperations
+from uql.constants import errors as errorConstants
+from uql.constants import types
 from uql.utils import templates as t
 from uql.utils.query import makeQuery
-from uql.utils.exceptions import Interruption
+from uql.exceptions import RequestHandlingError
 
 from rest_framework.request import Request
 
@@ -13,12 +21,60 @@ from django.db.models import Field, Model
 from django.db.utils import IntegrityError
 
 from . import IntentFunction
+import typing
+
+ModelOperationPermission: typing.TypeAlias = (
+    SelectPermissionTyping
+    | UpdatePermissionTyping
+    | InsertPermissionTyping
+    | DeletePermissionTyping
+)
+
+ModelOperationKeys: typing.TypeAlias = (
+    typing.Literal["select"]
+    | typing.Literal["insert"]
+    | typing.Literal["update"]
+    | typing.Literal["delete"]
+)
 
 
 class ModelIntent:
-    def __init__(self, rootConfig: UQLConfig, modelConfig: ModelConfig) -> None:
+    def __init__(self, rootConfig: type[UQLConfig], modelConfig: ModelConfig) -> None:
         self.modelConfig = modelConfig
         self.rootConfig = rootConfig
+
+    @staticmethod
+    def getUserIdFromRequest(request: Request) -> types.Pk | None:
+        return getattr(request.user, "id", None)
+
+    @staticmethod
+    def getPermission(
+        role: str,
+        operation: ModelOperationKeys,
+        permissions: dict[
+            str, typing.Callable[[types.Pk | None], ModelPermissionTyping]
+        ],
+        userId: str | int | None = None,
+    ) -> tuple[ModelPermissionTyping, ModelOperationPermission]:
+
+        # get permission config
+        # pass the user id here since we're trying to get the rows
+        permission = permissions.get(role, lambda x: None)(userId)
+        permissionError = PermissionError(
+            f"User{'({id})'.format({id: userId}) if userId else ''} with role: '{role}' has no {operation} permission",
+            401,
+        )
+
+        if not permission:
+            raise permissionError
+
+        # operation permission
+        operationPermission: ModelOperationPermission | None = permission.get(operation)
+
+        if not operationPermission:
+            raise permissionError
+
+        return (permission, operationPermission)
 
     def find(self, request: Request, args: dict):
         """returns a single object from models
@@ -35,30 +91,26 @@ class ModelIntent:
         """
         where = args.get("where")
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+        Sr = self.modelConfig.createSerializerClass(role)
 
-        # get permission config
-        # pass the user id here since we're trying to get the rows
-        permission = self.modelConfig.permissions.get(role, lambda x: None)(
-            getattr(request.user, "id", None)
+        selectPermission = typing.cast(
+            SelectPermissionTyping,
+            ModelIntent.getPermission(
+                role,
+                "select",
+                self.modelConfig.permissions,
+                ModelIntent.getUserIdFromRequest(request),
+            )[1],
         )
-
-        try:
-            Sr = self.modelConfig.createSerializerClass(role)
-        except PermissionError as e:
-            raise Interruption(
-                t.error(
-                    message=str(e),
-                    type="PERMISSION_ERROR",
-                    code=401,
-                )
-            )
 
         query = makeQuery(where) if where else None
+
         models = (
             self.modelConfig.model.objects.all()
-            if permission.select.row == True
-            else self.modelConfig.model.objects.filter(permission.select.row)
+            if selectPermission["row"] == CellFlags.ALL
+            else self.modelConfig.model.objects.filter(selectPermission["row"])
         )
+
         instance = models.get(query) if query else models.first()
         return Sr(instance).data
 
@@ -77,75 +129,69 @@ class ModelIntent:
         """
         where = args.get("where")
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
+        Sr = self.modelConfig.createSerializerClass(role)
 
-        # get permission config
-        # pass the user id here since we're trying to get the rows
-        permission = self.modelConfig.permissions.get(role, lambda x: None)(
-            getattr(request.user, "id", None)
+        selectPermission = typing.cast(
+            SelectPermissionTyping,
+            ModelIntent.getPermission(
+                role,
+                "select",
+                self.modelConfig.permissions,
+                ModelIntent.getUserIdFromRequest(request),
+            )[1],
         )
-
-        try:
-            Sr = self.modelConfig.createSerializerClass(role)
-        except PermissionError as e:
-            raise Interruption(
-                t.error(
-                    message=str(e),
-                    type="PERMISSION_ERROR",
-                    code=401,
-                )
-            )
 
         query = makeQuery(where) if where else None
         models = (
             self.modelConfig.model.objects.all()
-            if permission.select.row == True
-            else self.modelConfig.model.objects.filter(permission.select.row)
+            if selectPermission["row"] == CellFlags.ALL
+            else self.modelConfig.model.objects.filter(selectPermission["row"])
         )
+
         models = models.filter(query) if query else models
         return Sr(models, many=True).data
 
-    def insert(self, request: Request, args: dict):
-        obj: dict = args["object"]  # required
+    def insert(self, request: Request, args: dict[str, typing.Any]):
+        obj: dict[str, typing.Any] = args["object"]  # required
 
         # get role and permission config
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
-        permission = self.modelConfig.permissions.get(role, lambda x: None)(
-            getattr(request.user, "id", None)
+
+        _, insertPermission = typing.cast(
+            tuple[ModelPermissionTyping, InsertPermissionTyping],
+            ModelIntent.getPermission(
+                role,
+                "insert",
+                self.modelConfig.permissions,
+                ModelIntent.getUserIdFromRequest(request),
+            ),
         )
 
-        # check permission's there
-        # check insert's there
-        # check that the obj values is valid
+        checkDefault = lambda request, params: True
+        insertPermission.setdefault("check", checkDefault)
+        insertPermission.setdefault("requiredFields", [])
 
-        _pass_check = False
-        _has_insert_permission = permission and permission.insert
-
-        if _has_insert_permission:
-            _pass_check = obj and permission.insert.check(request, obj)
-
-        if not (_has_insert_permission and _pass_check):
-            raise Interruption(
-                t.error(
-                    message=(
-                        "Unauthorized mutation"
-                        if not _pass_check
-                        else f'User with role "{role}" cannot insert into {self.modelConfig.name}'
-                    ),
-                    type="PERMISSION_ERROR",
-                    code=401,
-                )
-            )
+        if not insertPermission.get("check", checkDefault)(request, obj):
+            raise PermissionError("Unauthorized insertion", 401)
 
         # required fields should be a subset of insertable column
-        if not set(permission.insert.requiredFields).issubset(permission.insert.column):
+        if not (
+            insertPermission["column"] == CellFlags.ALL
+            or set(
+                typing.cast(list[str], insertPermission.get("requiredFields"))
+            ).issubset(insertPermission["column"])
+        ):
             raise Exception(
-                "insert.requiredFields should be a subset of insert.columns"
+                "insert.requiredFields should be a subset of insert.columns", 500
             )
 
         # check if required field's in obj
-        if not set(permission.insert.requiredFields).issubset(obj.keys()):
+        if not set(
+            typing.cast(list[str], insertPermission.get("requiredFields"))
+        ).issubset(obj.keys()):
             raise Exception(
-                f"requires fields ({', '.join(permission.insert.requiredFields)})"
+                f"requires fields ({', '.join(typing.cast(list[str], insertPermission.get('requiredFields')))})",
+                500,
             )
 
         # check if user only included permitted colums in obj
@@ -156,18 +202,16 @@ class ModelIntent:
                 if isinstance(field, Field)
             ]
             + [fk for fk in self.modelConfig.foreignKeys.keys()]
-            if permission.insert.column == CellFlags.ALL_COLUMNS
-            else permission.insert.column
+            if insertPermission["column"] == CellFlags.ALL
+            else insertPermission["column"]
         )
 
         for key in obj.keys():
             if not (key in fields):
-                raise Interruption(
-                    t.error(
-                        message=f'cannot insert "{key}" in {self.modelConfig.name}',
-                        type="UNKNOWN_KEYS",
-                        code=400,
-                    )
+                raise RequestHandlingError(
+                    f'cannot insert "{key}" in {self.modelConfig.name}',
+                    errorCode=errorConstants.UNKNOWN_ARGS,
+                    statusCode=400,
                 )
 
             # foriegn keys need to be passed by object
@@ -179,7 +223,8 @@ class ModelIntent:
             if fk:
                 # if key is a foriegn key, change the string or integer pk to an item
                 # that correspond to its model object
-                obj[key] = fk.getObject(obj[key])
+                # obj[key] = fk.getObject(obj[key])
+                obj[key] = fk["model"].objects.get(obj[key])
 
         try:
             # create model
@@ -191,66 +236,66 @@ class ModelIntent:
             return Sr(model).data
 
         except Exception as e:
-            raise Interruption(
-                t.error(
-                    message=str(e),
-                    type=e.__class__.__name__ or "UNKNOWN_ERROR",
-                    code=400,
-                )
+            raise RequestHandlingError(
+                e.args[0] if len(e.args) > 0 else "Unknown error",
+                errorCode=e.__class__.__name__,
+                statusCode=400,
             )
 
     def insertMany(self, request: Request, args: dict):
-        objects: list[dict] = args["objects"]  # required
+        objects: list[dict[str, typing.Any]] = args["objects"]  # required
 
         # get role and permission config
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
-        permission = self.modelConfig.permissions.get(role, lambda x: None)(
-            getattr(request.user, "id", None)
+
+        # get insert permission
+        _, insertPermission = typing.cast(
+            tuple[ModelPermissionTyping, InsertPermissionTyping],
+            ModelIntent.getPermission(
+                role,
+                "insert",
+                self.modelConfig.permissions,
+                ModelIntent.getUserIdFromRequest(request),
+            ),
         )
 
-        # check permission's there
-        # check insert's there
-        # check that the _set values is valid
+        checkDefault = lambda request, params: True
+        insertPermission.setdefault("check", checkDefault)
+        insertPermission.setdefault("requiredFields", [])
 
-        _pass_check = False
-        _has_insert_permission = permission and permission.insert
-
-        if _has_insert_permission:
-            _pass_check = objects and all(
-                [permission.insert.check(request, obj) for obj in objects]
-            )
-
-        if not (_has_insert_permission and _pass_check):
-            raise Interruption(
-                t.error(
-                    message=(
-                        "Unauthorized mutation"
-                        if not _pass_check
-                        else f'User with role "{role}" cannot insert into {self.modelConfig.name}'
-                    ),
-                    type="PERMISSION_ERROR",
-                    code=401,
-                )
-            )
+        if not all(
+            [
+                insertPermission.get("check", checkDefault)(request, param)
+                for param in objects
+            ]
+        ):
+            raise PermissionError("Unauthorised insertion", 401)
 
         # get model data from select realizers
         Sr = self.modelConfig.createSerializerClass(role)
 
         # required fields should be a subset of insertable column
-        if not set(permission.insert.requiredFields).issubset(permission.insert.column):
+        if not (
+            insertPermission["column"] == CellFlags.ALL
+            or set(
+                typing.cast(list[str], insertPermission.get("requiredFields"))
+            ).issubset(insertPermission["column"])
+        ):
             raise Exception(
-                "insert.requiredFields should be a subset of insert.columns"
+                "insert.requiredFields should be a subset of insert.columns", 500
             )
 
         # check if required field's in each object
         if not all(
             [
-                set(permission.insert.requiredFields).issubset(obj.keys())
+                set(
+                    typing.cast(list[str], insertPermission.get("requiredFields"))
+                ).issubset(obj.keys())
                 for obj in objects
             ]
         ):
             raise Exception(
-                f"requires fields ({', '.join(permission.insert.requiredFields)})"
+                f"requires fields ({', '.join(typing.cast(list[str], insertPermission.get('requiredFields')))})"
             )
 
         # check if user only included permitted colums in each object
@@ -261,8 +306,8 @@ class ModelIntent:
                 if isinstance(field, Field)
             ]
             + [fk for fk in self.modelConfig.foreignKeys.keys()]
-            if permission.insert.column == CellFlags.ALL_COLUMNS
-            else permission.insert.column
+            if insertPermission["column"] == CellFlags.ALL
+            else insertPermission["column"]
         )
 
         res = []  # result
@@ -272,12 +317,10 @@ class ModelIntent:
                 for obj in objects:
                     for key in obj.keys():
                         if not (key in fields):
-                            raise Interruption(
-                                t.error(
-                                    message=f'cannot insert "{key}" in {self.modelConfig.name}',
-                                    type="UNKNOWN_KEYS",
-                                    code=400,
-                                )
+                            raise RequestHandlingError(
+                                f'cannot insert "{key}" in {self.modelConfig.name}',
+                                errorCode=errorConstants.UNKNOWN_ARGS,
+                                statusCode=400,
                             )
 
                         # foriegn keys need to be passed by object
@@ -289,7 +332,7 @@ class ModelIntent:
                         if fk:
                             # if key is a foriegn key, change the string or integer pk to an item
                             # that correspond to its model object
-                            obj[key] = fk.getObject(obj[key])
+                            obj[key] = fk["model"].objects.get(obj[key])
 
                     # create model
                     model = self.modelConfig.model(**obj)
@@ -297,40 +340,46 @@ class ModelIntent:
 
                     res.append(model)
 
-        except (transaction.TransactionManagementError, IntegrityError) as e:
-            raise Interruption(
-                t.error(
-                    message=str(e),
-                    type=e.__class__.__name__ or "DATABASE_ERROR",
-                    code=400,
-                )
+        except Exception as e:
+            raise RequestHandlingError(
+                e.args[0] if len(e.args) > 0 else "Unknown error",
+                errorCode=e.__class__.__name__,
+                statusCode=400,
             )
 
         return Sr(res, many=True).data
 
-    def update(self, request: Request, args: dict):
-        _set: dict = args["set"]  # required
-        pk: int | str = args["pk"]  # required
+    def update(self, request: Request, args):
+        args = typing.cast(PartialUpdateTyping, args)
+        partial: dict = args["partial"]  # required
+        pk: types.Pk = args["pk"]  # required
 
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
-        permission = self.modelConfig.permissions.get(role, lambda x: None)(
-            getattr(request.user, "id", None)
-        )
 
-        if not (
-            role
-            and permission
-            and permission.update
-            and permission.update.check(request, {"pk": pk, "set": _set})
+        _, updatePermission = typing.cast(
+            tuple[ModelPermissionTyping, UpdatePermissionTyping],
+            ModelIntent.getPermission(
+                role,
+                "update",
+                self.modelConfig.permissions,
+                ModelIntent.getUserIdFromRequest(request),
+            ),
+        )
+        checkDefault = lambda req, partial: True
+        updatePermission.setdefault("check", checkDefault)
+
+        if not updatePermission.get("check", checkDefault)(
+            request, {"pk": pk, "partial": partial}
         ):
-            raise Interruption(t.error(message="", type="PERMISSION_ERROR", code=401))
+            raise PermissionError("Unauthorized mutation", 401)
 
         Sr = self.modelConfig.createSerializerClass(role)
 
+        # fetch all the rows that can be updated by the client
         models = (
             self.modelConfig.model.objects.all()
-            if permission.update.row == True
-            else self.modelConfig.model.objects.filter(permission.update.row)
+            if updatePermission["row"] == CellFlags.ALL
+            else self.modelConfig.model.objects.filter(updatePermission["row"])
         )
 
         try:
@@ -344,62 +393,70 @@ class ModelIntent:
                     if isinstance(field, Field)
                 ]
                 + [fk for fk in self.modelConfig.foreignKeys.keys()]
-                if permission.update.column == CellFlags.ALL_COLUMNS
-                else permission.update.column
+                if updatePermission["column"] == CellFlags.ALL
+                else updatePermission["column"]
             )
 
-            for key, value in _set.items():
+            for key, value in partial.items():
                 if not (key in fields):
-                    raise Interruption(
-                        t.error(
-                            message=f'cannot update "{key}" in {self.modelConfig.name}',
-                            type="UNKNOWN_KEYS",
-                            code=400,
-                        )
+                    raise RequestHandlingError(
+                        f'cannot update "{key}" in {self.modelConfig.name}',
+                        errorCode="",
+                        statusCode=400,
                     )
 
                 setattr(obj, key, value)
 
-            obj.save(update_fields=_set.keys())
+            obj.save(update_fields=partial.keys())
             return Sr(obj).data
 
-        except (self.modelConfig.model.DoesNotExist, IntegrityError) as e:
-            e404 = type(e) == self.modelConfig.model.DoesNotExist
-            raise Interruption(
-                t.error(
-                    message=f"{self.modelConfig.name}(pk={pk}) not found"
-                    if e404
-                    else str(e),
-                    type="OBJECT_NOT_FOUND" if e404 else e.__class__.__name__,
-                    code=404 if e404 else 400,
-                )
+        except Exception as e:
+            _e404 = type(e) == self.modelConfig.model.DoesNotExist
+
+            raise RequestHandlingError(
+                f"{self.modelConfig.name}(pk={pk}) not found"
+                if _e404
+                else e.args[0]
+                if len(e.args) > 0
+                else "Unknown error",
+                errorCode=e.__class__.__name__,
+                statusCode=404 if _e404 else 400,
             )
 
-    def updateMany(self, request: Request, args: dict):
+    def updateMany(self, request: Request, args: dict[str, typing.Any]):
         """args[objects] should be a list of objects.
         [{pk: str|int, set: {...}}]
         """
-        objects = args["objects"]  # required
+        objects: list[PartialUpdateTyping] = args["objects"]  # required
 
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
-        permission = self.modelConfig.permissions.get(role, lambda x: None)(
-            getattr(request.user, "id", None)
-        )
 
-        if not (
-            role
-            and permission
-            and permission.update
-            and all([permission.update.check(request, obj) for obj in objects])
+        _, updatePermission = typing.cast(
+            tuple[ModelPermissionTyping, UpdatePermissionTyping],
+            ModelIntent.getPermission(
+                role,
+                "update",
+                self.modelConfig.permissions,
+                ModelIntent.getUserIdFromRequest(request),
+            ),
+        )
+        checkDefault = lambda req, partialUpdate: True
+        updatePermission.setdefault("check", checkDefault)
+
+        if not all(
+            [
+                updatePermission.get("check", checkDefault)(request, partialUpdate)
+                for partialUpdate in objects
+            ]
         ):
-            raise Interruption(t.error(message="", type="PERMISSION_ERROR", code=401))
+            raise PermissionError("Unauthorized mutation", 401)
 
         Sr = self.modelConfig.createSerializerClass(role)
 
         models = (
             self.modelConfig.model.objects.all()
-            if permission.update.row == True
-            else self.modelConfig.model.objects.filter(permission.update.row)
+            if updatePermission["row"] == CellFlags.ALL
+            else self.modelConfig.model.objects.filter(updatePermission["row"])
         )
 
         res = []  # result
@@ -411,102 +468,103 @@ class ModelIntent:
                 if isinstance(field, Field)
             ]
             + [fk for fk in self.modelConfig.foreignKeys.keys()]
-            if permission.update.column == CellFlags.ALL_COLUMNS
-            else permission.update.column
+            if updatePermission["column"] == CellFlags.ALL
+            else updatePermission["column"]
         )
 
         try:
             with transaction.atomic():
-                for obj in objects:
-                    pk = obj["pk"]  # required
-                    _set = obj["set"]  # required
+                for unit in objects:
+                    pk = unit["pk"]  # required
+                    partialUpdate = unit["partial"]  # required
 
                     obj: Model = models.get(pk=pk)
 
                     # check if user only included permitted colums in obj
 
-                    for key, value in _set.items():
+                    for key, value in partialUpdate.items():
                         if not (key in fields):
-                            raise Interruption(
-                                t.error(
-                                    message=f'cannot update "{key}" in {self.modelConfig.name}',
-                                    type="UNKNOWN_KEYS",
-                                    code=400,
-                                )
+                            raise RequestHandlingError(
+                                f'cannot update "{key}" in {self.modelConfig.name}',
+                                errorCode="",
+                                statusCode=400,
                             )
 
                         setattr(obj, key, value)
 
-                    obj.save(update_fields=_set.keys())
+                    obj.save(update_fields=partialUpdate.keys())
                     res.append(obj)
 
-        except (self.modelConfig.model.DoesNotExist, IntegrityError) as e:
-            e404 = type(e) == self.modelConfig.model.DoesNotExist
-            raise Interruption(
-                t.error(
-                    message=f"{self.modelConfig.name}(pk={pk}) not found"
-                    if e404
-                    else str(e),
-                    type="OBJECT_NOT_FOUND" if e404 else e.__class__.__name__,
-                    code=404 if e404 else 400,
-                )
+        except Exception as e:
+            raise RequestHandlingError(
+                e.args[0] if len(e.args) > 0 else "Unknown error",
+                errorCode=e.__class__.__name__,
+                statusCode=404
+                if type(e) == self.modelConfig.model.DoesNotExist
+                else 400,
             )
 
         return Sr(res, many=True).data
 
     def delete(self, request: Request, args: dict):
-        pk = args["pk"]  # required
+        pk: types.Pk = args["pk"]  # required
 
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
-        permission = self.modelConfig.permissions.get(role, lambda x: None)(
-            getattr(request.user, "id", None)
+        _, deletePermission = typing.cast(
+            tuple[ModelPermissionTyping, DeletePermissionTyping],
+            ModelIntent.getPermission(
+                role,
+                "delete",
+                self.modelConfig.permissions,
+                ModelIntent.getUserIdFromRequest(request),
+            ),
         )
-
-        if not (role and permission and permission.delete):
-            raise Interruption(t.error(message="", type="PERMISSION_ERROR", code=401))
-
-        Sr = self.modelConfig.createSerializerClass(role)
 
         models = (
             self.modelConfig.model.objects.all()
-            if permission.delete.row == True
-            else self.modelConfig.model.objects.filter(permission.delete.row)
+            if deletePermission["row"] == CellFlags.ALL
+            else self.modelConfig.model.objects.filter(deletePermission["row"])
         )
 
         try:
             obj: Model = models.get(pk=pk)
-            res = Sr(obj).data
             obj.delete()
-            return res
+            return None
         except self.modelConfig.model.DoesNotExist:
-            raise Interruption(t.error(message="", type="OBJECT_NOT_FOUND", code=404))
+            raise RequestHandlingError(
+                "", errorCode=errorConstants.OBJECT_NOT_FOUND, statusCode=404
+            )
 
     def deleteMany(self, request: Request, args: dict):
-        pks = args["pks"]  # required
+        pks: list[types.Pk] = args["pks"]  # required
 
         role = self.rootConfig.getAuthenticatedUserRoles(request.user)
-        permission = self.modelConfig.permissions.get(role, lambda x: None)(
-            getattr(request.user, "id", None)
+        _, deletePermission = typing.cast(
+            tuple[ModelPermissionTyping, DeletePermissionTyping],
+            ModelIntent.getPermission(
+                role,
+                "delete",
+                self.modelConfig.permissions,
+                ModelIntent.getUserIdFromRequest(request),
+            ),
         )
-
-        if not (role and permission and permission.delete):
-            raise Interruption(t.error(message="", type="PERMISSION_ERROR", code=401))
-
-        Sr = self.modelConfig.createSerializerClass(role)
 
         models = (
             self.modelConfig.model.objects.all()
-            if permission.delete.row == True
-            else self.modelConfig.model.objects.filter(permission.delete.row)
+            if deletePermission["row"] == CellFlags.ALL
+            else self.modelConfig.model.objects.filter(deletePermission["row"])
         )
 
         try:
-            objects: Model = [models.get(pk=pk) for pk in pks]
-            res = Sr(objects, many=True).data
-            [obj.delete() for obj in objects]
-            return res
+            with transaction.atomic():
+                instances: list[Model] = [models.get(pk=pk) for pk in pks]
+                for instance in instances:
+                    instance.delete()
+            return None
         except self.modelConfig.model.DoesNotExist:
-            raise Interruption(t.error(message="", type="OBJECT_NOT_FOUND", code=404))
+            raise RequestHandlingError(
+                "", errorCode=errorConstants.OBJECT_NOT_FOUND, statusCode=404
+            )
 
     @property
     def intenthandlers(self) -> dict[str, IntentFunction]:
@@ -534,7 +592,7 @@ class ModelIntent:
             ),
             ModelOperations.UPDATE: (
                 f"models.{name}.update",
-                IntentFunction(self.update, requiredArgs=("pk", "set")),
+                IntentFunction(self.update, requiredArgs=("pk", "partial")),
             ),
             ModelOperations.UPDATE_MANY: (
                 f"models.{name}.updatemany",

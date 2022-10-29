@@ -1,26 +1,42 @@
 from .config import UQLConfig
 from .intent.model import ModelIntent
-from .intent import IntentModule
 from .intent import IntentFunction
 from .utils import templates as t
 from .utils.select import selectKeys
-from .utils.exceptions import Interruption
 from .utils.types import isArray
 from .utils.types import isMap
-from .tests import infrastructure
+from .exceptions import RequestHandlingError
+from .constants import errors as errorConstants
 
 from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-
-class _UQLView(APIView):
-    @staticmethod
-    def usingInfrastructure(request: infrastructure.Request) -> Response:
-        ...
+import typing
+from typing_extensions import NotRequired
 
 
-def UQLView(config: type[UQLConfig]) -> type[_UQLView]:
+class UQLRequestBodyTyping(typing.TypedDict):
+    """Base structure for uql request input"""
+
+    intent: str | None
+    fields: bool | dict | None
+    args: dict[str, typing.Any]
+
+
+class UQLResponseMetaTyping(typing.TypedDict):
+    hasError: bool
+
+
+class UQLResponseBodyTyping(typing.TypedDict):
+    data: typing.Mapping | typing.Sequence | None
+    error: t.ErrorTyping | None
+    warning: NotRequired[str | None]
+    statusCode: int
+    meta: UQLResponseMetaTyping
+
+
+def UQLView(config: type[UQLConfig]) -> type[APIView]:
     """Creates an APIView class that is built on config.
 
     Args:
@@ -30,31 +46,46 @@ def UQLView(config: type[UQLConfig]) -> type[_UQLView]:
         type[APIView]: _description_
     """
 
-    def response_decorator(fn):
-        """Decorates the response to handle all errors from view"""
+    def rootErrorHandler(fn):
+        """
+        Decorates the response to handle all errors from view.
+        """
 
-        def _(*args, **kwargs):
+        def _(*args, **kwargs) -> Response:
 
             try:
-                res = fn(*args, **kwargs)
-                if not res:
-                    raise ValueError("intent did not return any data")
+                res: UQLResponseBodyTyping = fn(*args, **kwargs)
 
             except Exception as e:
                 if config.raise_exceptions:
+                    # raise error as per stated in app's configuration
                     raise e
 
-                res = t.response(
-                    error=t.error(
-                        code=500,
-                        message=str(e),
-                        type="INTERNAL_SERVER_ERROR",
+                if type(e) == RequestHandlingError:
+                    e = typing.cast(RequestHandlingError, e)
+                    return Response(
+                        t.error(
+                            e.message,
+                            errorCode=e.errorCode,
+                            statusCode=e.statusCode,
+                            summary=e.summary,
+                        ),
+                        status=e.statusCode,
                     )
-                )
+                else:
+                    return Response(
+                        t.error(
+                            e.args[0] if len(e.args) > 0 else e.__class__.__name__,
+                            errorCode=e.__class__.__name__,
+                            statusCode=e.args[1] if len(e.args) > 1 else 500,
+                        )
+                    )
 
             if type(res) == list:
                 return Response(res, status=200)
-            return Response(res, status=res["meta"]["status_code"])
+
+            # TODO: review res
+            return Response(res, status=res["statusCode"])
 
         return _
 
@@ -64,12 +95,7 @@ def UQLView(config: type[UQLConfig]) -> type[_UQLView]:
 
     # load up func roots
     for wrapper in config.functions:
-        if type(wrapper) == IntentModule:
-            functionRoots.update(
-                {f"functions.{k}": v for k, v in wrapper.spread.items()}
-            )
-        elif type(wrapper) == IntentFunction:
-            functionRoots[f"functions.{wrapper.name}"] = wrapper
+        functionRoots[f"functions.{wrapper.name}"] = wrapper
 
     # load up model roots
     for modelConfig in config.models:
@@ -78,6 +104,92 @@ def UQLView(config: type[UQLConfig]) -> type[_UQLView]:
     class Adapter(APIView):
         ROOT: dict[str, IntentFunction] = {**modelRoots, **functionRoots}
 
+        def handleIntent(
+            self,
+            request: Request,
+            intent: str | None,
+            fields: bool | dict | None,
+            arguments: dict[str, typing.Any],
+        ) -> UQLResponseBodyTyping:
+            # intents are required to use this app
+            if intent == None:
+                raise RequestHandlingError(
+                    "No specified intent",
+                    errorCode=errorConstants.NO_INTENT,
+                    statusCode=400,
+                    summary="Could not find any specified intent during request call",
+                )
+
+            if not (intent in self.ROOT):
+                raise RequestHandlingError(
+                    "Intent does not exist",
+                    errorCode=errorConstants.INEXISTENT_INTENT,
+                    statusCode=400,
+                    summary=f'Intent "{intent}" does not exist in uql root.\nThis is a development error, refer to schema to see available intents.',
+                )
+
+            # get the function that would handles current request from root
+            handler: IntentFunction = self.ROOT[intent]
+
+            warning = (
+                "fields not specified, you might get an empty data"
+                if fields == None
+                else None
+            )
+
+            data = handler(request, arguments)
+
+            # raise an error if the intent handler returned any thing other than
+            # the instances of dict or list or tuple or none
+            if not (data == None or isMap(data) or isArray(data)):
+                raise RequestHandlingError(
+                    "Invalid handler output",
+                    errorCode=errorConstants.INVALID_REQUEST_HANDLER_OUTPUT,
+                    statusCode=500,
+                    summary=f"Intent ({intent}) handler returned a {type(data)} type. allowed output types are dict, list, none",
+                )
+
+            # if there's no data, do not filter response
+            if data == None:
+                return {
+                    "data": None,
+                    "error": None,
+                    "warning": warning,
+                    "statusCode": 200,
+                    "meta": {"hasError": False},
+                }
+
+            # psuedo data function
+            _data = lambda: data
+
+            if isMap(data):
+                _data = lambda: selectKeys(
+                    typing.cast(dict, data), typing.cast(dict, fields)
+                )
+            else:
+                _data = lambda: [
+                    selectKeys(i, typing.cast(dict, fields)) if isMap(i) else i
+                    for i in typing.cast(typing.Sequence[typing.Any], data)
+                ]
+
+            # check fields to compute result
+            if fields:
+                if type(fields) == dict:
+                    result = _data()
+                else:
+                    result = data
+            else:
+                result = None
+
+            # return result
+            return {
+                "data": result,
+                "warning": warning,
+                "statusCode": 200,
+                "error": None,
+                "meta": {"hasError": False},
+            }
+
         def get(self, request: Request) -> Response:
             if config.show_docs:
                 root = self.ROOT
@@ -85,127 +197,57 @@ def UQLView(config: type[UQLConfig]) -> type[_UQLView]:
                 return Response(result)
             return Response(data={"msg": 'set "show_docs" to True in uql config'})
 
-        @response_decorator
-        def post(self, request: Request) -> Response:
-            def handleIntent(
-                intent: str, fields: str | dict = None, arguments: dict = None
-            ):
-                # intents are required to use this app
-                if intent == None:
-                    return t.response(
-                        data=None,
-                        error=t.error(message="intent not provided", type="NO_INTENT"),
-                    )
-
-                if not (intent in self.ROOT):
-                    return t.response(
-                        data=None,
-                        error=t.error(
-                            message="intent does not exist",
-                            type="INEXISTENT_INTENT",
-                            code=400,
-                        ),
-                    )
-
-                # get the function that handles from root
-                handler: IntentFunction = self.ROOT[intent]
-
-                warning = (
-                    "fields not specified, you might get an empty data"
-                    if not fields
-                    else None
-                )
-
-                try:
-                    data = handler(request, arguments)
-
-                    # raise an error if the intent handler returned any thing other than
-                    # the instances of dict or list or tuple
-                    if not (data == None or isMap(data) or isArray(data)):
-                        raise Interruption(
-                            t.error(message="intent should return a array or map, none")
-                        )
-
-                    # if there's no data, do not filter response
-                    if data != None:
-                        # psuedo data function
-                        _data = lambda: data
-                        if isMap(data):
-                            _data = lambda: selectKeys(data, fields)
-                        else:
-                            _data = lambda: [selectKeys(i, fields) for i in data]
-
-                        # check fields to compute result
-                        if fields == None:
-                            result = None
-                        elif fields == "$all":
-                            result = data
-                        else:
-                            result = _data()
-
-                        # return result
-                        return t.response(data=result, warning=warning)
-
-                    # return
-                    return t.response(data=None, warning=warning)
-
-                except Exception as e:
-
-                    # catch all exceptions and return them as error response
-                    if config.raise_exceptions:
-                        raise e
-
-                    return t.response(
-                        error=e.errortemplate
-                        if type(e) == Interruption
-                        else t.error(
-                            message=f'error running "{intent}": {e}',
-                            code=400,
-                            type=e.__class__.__name__,
-                        )
-                    )
-
+        @rootErrorHandler
+        def post(
+            self, request: Request
+        ) -> UQLResponseBodyTyping | list[UQLResponseBodyTyping]:
             # get response data
             body = request.data
 
             if type(body) == dict:
+                body = typing.cast(UQLRequestBodyTyping, body)
+                body.setdefault("intent", None)
+                body.setdefault("fields", None)
+                body.setdefault("args", {})
 
                 # tells the app what function to call
-                intent = body.get("intent")
+                intent = body["intent"]
 
                 # specifies the return type of the function;
                 # should only be used on dicts or lists of dicts
-                # -- "$all" : include all fields
+                # -- bool   : include all fields or not
                 # -- dict   : include selected fields
                 # -- None   : no fields
-                fields = body.get("fields")
+                fields = body["fields"]
 
                 # arguments are values to be passed into the handler function
                 # there are required and optional arguments, so the keys in this data should meet the requirements
-                arguments = body.get("args") or {}
+                arguments = body["args"]
 
-                return handleIntent(intent, fields, arguments)
+                return self.handleIntent(request, intent, fields, arguments)
 
             elif type(body) == list:
 
-                # multiple intents
-                # sadly this is synchronous
-                body: list[dict]
+                # sequentially run multiple intent in on call
+                body = typing.cast(list[UQLRequestBodyTyping], body)
+                responseData: list[UQLResponseBodyTyping] = []
 
-                return [
-                    handleIntent(
-                        cell.get("intent"), cell.get("fields"), cell.get("args") or {}
+                for cell in body:
+                    cell.setdefault("intent", None)
+                    cell.setdefault("fields", None)
+                    cell.setdefault("args", {})
+
+                    responseData.append(
+                        self.handleIntent(
+                            request, cell["intent"], cell["fields"], cell["args"]
+                        )
                     )
-                    for cell in body
-                ]
+                return responseData
             else:
-                raise TypeError(f"unknown body type: {type(body)}")
-
-        @staticmethod
-        def usingInfrastructure(request: infrastructure.Request) -> Response:
-            _uql = Adapter()
-            if request.method.lower() == "get":
-                return _uql.get(request)
-            return _uql.post(request)
+                raise RequestHandlingError(
+                    f"Unknown body type: {type(body)}",
+                    statusCode=400,
+                    errorCode=errorConstants.INVALID_REQUEST_BODY,
+                )
 
     return Adapter
