@@ -1,52 +1,42 @@
-from dataclasses import dataclass
+from __future__ import annotations
 
 from django.db.models import Q, Model
 from django.db.models.fields import Field
 
-from typing import Callable, Any
-from typing_extensions import Self
+from typing import Any
+from typing import Callable
+from typing import TypedDict
+from typing import Literal
+from typing import cast
+from typing_extensions import NotRequired
 
 from rest_framework.request import Request
 from rest_framework.serializers import ModelSerializer
 
-from .constants import RelationshipTypes
 from .constants import CellFlags
 from .constants import ModelOperations
+from .constants import types
 
 
-@dataclass(kw_only=True)
-class ForeignKey:
+class ForeignKeyTyping(TypedDict):
     """data structure for foreign keys"""
 
     model: type[Model]
-    type: RelationshipTypes
-
-    def getObject(self, pk: str | int) -> Model:
-        # would raise DoNotExist exception if not found
-        return self.model.objects.get(pk=pk)
+    type: Literal["LIST"] | Literal["OBJECT"]
 
 
-@dataclass(kw_only=True)
-class SelectPermissionUnit:
+class SelectPermissionTyping(TypedDict):
     """data structure for permission unit"""
 
-    # these are the columns, permitted to be read
-    column: CellFlags | list[str]
-
-    # queries the rows that could be read
-    row: bool | Q
+    column: CellFlags | list[str]  # these are the columns, permitted to be read
+    row: CellFlags | Q  # queries the rows that could be read
 
 
-@dataclass(kw_only=True)
-class DeletePermissionUnit:
-    """..."""
-
-    # queries the row that could be deleted
-    row: bool | Q
+class DeletePermissionTyping(TypedDict):
+    row: CellFlags | Q  # queries the row that could be deleted
 
 
-@dataclass(kw_only=True)
-class InsertPermissionUnit:
+class InsertPermissionTyping(TypedDict):
     """a permission unit for insert operations.
     - check is a function that takes in request and the _set values to check if the values are valid
     """
@@ -55,17 +45,30 @@ class InsertPermissionUnit:
     column: CellFlags | list[str]
 
     # the columns that must be inserted
-    requiredFields: list[str]
+    requiredFields: NotRequired[list[str]]
 
     # checks the data that's about to be inserted.
     # if false, insertion will not be permitted
-    check: Callable[
-        [Request, Any], bool
-    ] = lambda req, _set: True  # takes in request and the attrs to set
+    # - (request: Request, values: dict[str, any]) -> bool
+    check: NotRequired[
+        Callable[[Request, dict[str, Any]], bool]
+    ]  # takes in request and the attrs to set
 
 
-@dataclass(kw_only=True)
-class UpdatePermissionUnit:
+class PartialUpdateTyping(TypedDict):
+    """This is the value passed to the update, updateMany intent ans on object to be updated.
+    pk is the primary key of the row
+    partial is the data that would be updated in the row
+
+    Args:
+        TypedDict (_type_): _description_
+    """
+
+    pk: types.Pk
+    partial: dict[str, Any]
+
+
+class UpdatePermissionTyping(TypedDict):
     """a permission unit, for updates operations.
     - row is a query to get the list of updatable queryset
     - check is a function that takes in request and the _set values to check if the values are valid
@@ -75,44 +78,34 @@ class UpdatePermissionUnit:
     column: CellFlags | list[str]
 
     # the possible rows that could be updated
-    row: bool | Q
+    row: CellFlags | Q
 
     # checks the data that's about to be updated,
     # if it returns false, update will not be allowed
-    check: Callable[[Request, Any], bool] = lambda req, _set: True
+    # - (request: Request, partial: PartialUpdateTyping) -> bool
+    check: NotRequired[Callable[[Request, PartialUpdateTyping], bool]]
 
 
-@dataclass(kw_only=True)
-class ModelPermissionConfig:
+class ModelPermissionTyping(TypedDict):
     """data stutructure for permission config"""
 
-    select: SelectPermissionUnit = None
-    insert: InsertPermissionUnit = None
-    update: UpdatePermissionUnit = None
-    delete: DeletePermissionUnit = None
-
-    @staticmethod
-    def fullaccess():
-        return ModelPermissionConfig(
-            delete=DeletePermissionUnit(row=True),
-            select=SelectPermissionUnit(column=CellFlags.ALL_COLUMNS, row=True),
-            insert=InsertPermissionUnit(
-                column=CellFlags.ALL_COLUMNS, requiredFields=[]
-            ),
-            update=UpdatePermissionUnit(column=CellFlags.ALL_COLUMNS, row=True),
-        )
+    select: NotRequired[SelectPermissionTyping | None]
+    insert: NotRequired[InsertPermissionTyping | None]
+    update: NotRequired[UpdatePermissionTyping | None]
+    delete: NotRequired[DeletePermissionTyping | None]
 
 
 class ModelConfig:
-    modelConfigs = {}
+    modelConfigs: dict[str, ModelConfig] = {}
 
     def __init__(
         self,
         *,
         model: type[Model],
-        foreignKeys: dict[str, ForeignKey] = None,
-        permissions: dict[str, Callable[[str | None], ModelPermissionConfig]] = None,
-        allowedOperations: list[ModelOperations] = None,
+        foreignKeys: dict[str, ForeignKeyTyping] | None = None,
+        permissions: dict[str, Callable[[types.Pk | None], ModelPermissionTyping]]
+        | None = None,
+        allowedOperations: list[ModelOperations] | None = None,
     ) -> None:
         self.model = model
         self.foreignKeys = foreignKeys or {}
@@ -129,25 +122,24 @@ class ModelConfig:
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} model={self.name.title()} fk={self.foreignKeys}, perimissions={self.permissions}>"
 
+    @staticmethod
+    def getModelName(model: type[Model]) -> str:
+        return model._meta.label_lower
+
     @property
     def name(self) -> str:
-        """returns the name of the model.
-
-        NOTE: i'm not sure if this would lead to conflicts in projects
-            where there are similar model names in diffrent apps. if this happens to be
-            a problem in the future, we might want to use Meta.label_lower.
-        """
-        return self.model._meta.model_name
+        """returns the name of the model."""
+        return self.getModelName(self.model)
 
     @staticmethod
-    def getConfig(model: type[Model]) -> Self:
+    def getConfig(model: type[Model]) -> ModelConfig | None:
         """fetchs a model configuration if the model has been wrapped in the ModelConfig class.
         this should use the same method of model name generation used in ModelConfig.name
         """
-        return ModelConfig.modelConfigs.get(model._meta.model_name)
+        return ModelConfig.modelConfigs.get(ModelConfig.getModelName(model))
 
     def createSerializerClass(
-        self, role: str, parents: list[type[Model]] = None
+        self, role: str, _parents: list[type[Model]] | None = None
     ) -> type[ModelSerializer]:
         """Creates a model serialiser class from user's role and operation type,
         which determines the kind of serializer that would be produced. depending on what
@@ -158,7 +150,7 @@ class ModelConfig:
 
         Args:
             role (str): the user's role
-            parents (list[type[Model]], optional): list of all the models that's been called
+            _parents (list[type[Model]], optional): list of all the models that's been called
                 before this in linear manner, with each model traversing all the way up directly
                 to it's parent. this is an effort to fix the infinte relationship loop, where a foreign model
                 also referenced the parent model in it's serializer.
@@ -170,19 +162,23 @@ class ModelConfig:
         Returns:
             type[ModelSerializer]: returns the serializer class
         """
-        parents = parents or []
+        parents = _parents or []
 
         # get the permission from function. we do not need to pass the userid
         # as we only govern fetching columns here. we can simply pass None
-        permission = self.permissions.get(role, lambda x: None)(None)
+        permission = self.permissions.get(role, lambda _: {})(None)
+        selectPermission = permission.get("select")
 
-        try:
-            operationObject: SelectPermissionUnit = permission.select
-        except AttributeError as e:
-            raise PermissionError(f'user with role "{role}" cannot select {self.name}')
+        if not (
+            permission
+            and permission.get("select")
+            and cast(SelectPermissionTyping, permission.get("select", {})).get("row")
+        ):
+            raise PermissionError(
+                f'User with role: "{role}" cannot select {self.name}', 401
+            )
 
-        if not (permission and operationObject and operationObject.row):
-            raise PermissionError(f'user with role "{role}" cannot select {self.name}')
+        selectPermission = cast(SelectPermissionTyping, selectPermission)
 
         class Sr(ModelSerializer):
             class Meta:
@@ -198,29 +194,47 @@ class ModelConfig:
                         if isinstance(field, Field)
                     ]
                     + [fk for fk in self.foreignKeys.keys()]
-                    if operationObject.column == CellFlags.ALL_COLUMNS
-                    else operationObject.column
+                    if selectPermission["column"] == CellFlags.ALL
+                    else selectPermission["column"]
                 )
 
-            def get_fields(cls):
+            def get_fields(*_):  # TODO: test if *_ could replace self
                 # get already defined fields from serializer class
                 fields = super().get_fields()
 
                 # create serializers for defined foreignkeys
                 # and inject them into serializer fields
                 for name, fk in self.foreignKeys.items():
-                    if fk.model in parents:
+                    if fk["model"] in parents:
                         # skip this model if it's been referenced somewhere
                         # from this node up from the parent's model root
                         continue
 
-                    modelConfig: ModelConfig | None = ModelConfig.getConfig(fk.model)
+                    modelConfig: ModelConfig | None = ModelConfig.getConfig(fk["model"])
 
                     if modelConfig:
                         _sr = modelConfig.createSerializerClass(
-                            role, parents=[*parents, self.model]
+                            role, _parents=[*parents, self.model]
                         )
-                        fields[name] = _sr(many=fk.type == RelationshipTypes.LIST)
+                        fields[name] = _sr(many=fk["type"] == "LIST")
                 return fields
 
         return Sr
+
+
+def fullPermissionAccess() -> ModelPermissionTyping:
+    """returns a modelpermission that grants complete access to all model operations
+
+    Returns:
+        ModelPermissionTyping
+    """
+    return {
+        "delete": {"row": CellFlags.ALL},
+        "select": {"column": CellFlags.ALL, "row": CellFlags.ALL},
+        "insert": {
+            "column": CellFlags.ALL,
+            "requiredFields": [],
+            "check": lambda request, params: True,
+        },
+        "update": {"column": CellFlags.ALL, "row": CellFlags.ALL},
+    }

@@ -1,21 +1,17 @@
-def error(*, message: str, type: str = "ERR_UNSPECIFIED", code: int = None):
-    return dict(
-        code=code,
-        type=type,
-        message=message,
-    )
+from uql.constants.types import ErrorTyping
 
 
-def response(
-    data=None, error: dict = None, warning: str = None, code: int = 200, **meta
-):
-    return dict(
-        meta={
-            "has_error": error != None,
-            "status_code": error.get("code", 400) if error else code,
-            **meta,
-        },
-        data=data,
-        error=error,
-        warning=warning,
-    )
+def error(
+    message: str,
+    /,
+    *,
+    errorCode: int | str | None = None,
+    statusCode: int | None = None,
+    summary: str | None = None,
+) -> ErrorTyping:
+    return {
+        "message": message,
+        "errorCode": errorCode,
+        "statusCode": statusCode,
+        "summary": summary,
+    }

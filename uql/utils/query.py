@@ -1,76 +1,95 @@
 # TODO: properly explain/document this file, cus me sef i dont understand
+import typing
 from django.db.models import Q
-from typing import Callable, Any, cast
 from functools import reduce
 from collections.abc import Sequence
 
 
-class QKeyword:
-    _store = {}
+ConjunctionTypes: typing.TypeAlias = (
+    typing.Literal["_or"] | typing.Literal["_and"] | typing.Literal["_not"]
+)
+RelationTypes: typing.TypeAlias = (
+    typing.Literal["_eq"]
+    | typing.Literal["_neq"]
+    | typing.Literal["_gt"]
+    | typing.Literal["_gte"]
+    | typing.Literal["_lt"]
+    | typing.Literal["_lte"]
+    | typing.Literal["_in"]
+    | typing.Literal["_nin"]
+    | typing.Literal["_contains"]
+    | typing.Literal["_icontains"]
+    | typing.Literal["_regex"]
+)
 
-    def __init__(self, name: str) -> None:
-        self.name = name
-        QKeyword._store[name] = self
 
-    @staticmethod
-    def get(name: str):
-        return QKeyword._store.get(name, None)
-
-
-class Relation(QKeyword):
-    def __init__(self, name: str, djtype: str, negate=False) -> None:
+class Relation:
+    def __init__(self, name: RelationTypes, djtype: str, negate=False) -> None:
         """Direct relation between a key and it's value"""
         self.name = name
         self.djtype = djtype
         self.negate = negate
-        super().__init__(name)
 
-    def resolve(self, key: str, value: Any) -> Q:
+    def resolve(self, key: str, value: typing.Any) -> Q:
         res = Q(**{f"{key}{self.djtype}": value})
         return ~res if self.negate else res
 
 
-class Conjunction(QKeyword):
-    def __init__(self, name: str, resolve: Callable[[list[Q]], Q]) -> None:
+class Conjunction:
+    def __init__(
+        self, name: ConjunctionTypes, resolve: typing.Callable[[list[Q]], Q]
+    ) -> None:
         """Relationship between many values"""
         self.name = name
         self.resolve = resolve
-        super().__init__(name)
 
 
 # create relationships
-Relation("_eq", "")
-Relation("_neq", "", negate=True)
-Relation("_gt", "__gt")
-Relation("_gte", "__gte")
-Relation("_lt", "__lt")
-Relation("_lte", "__lte")
-Relation("_in", "__in")
-Relation("_nin", "__in", negate=True)
-Relation("_contains", "__contains")
-Relation("_icontains", "__icontains")
-Relation("_regex", "__regex")
+relationships: dict[RelationTypes, Relation] = {
+    "_eq": Relation("_eq", ""),
+    "_neq": Relation("_neq", "", negate=True),
+    "_gt": Relation("_gt", "__gt"),
+    "_gte": Relation("_gte", "__gte"),
+    "_lt": Relation("_lt", "__lt"),
+    "_lte": Relation("_lte", "__lte"),
+    "_in": Relation("_in", "__in"),
+    "_nin": Relation("_nin", "__in", negate=True),
+    "_contains": Relation("_contains", "__contains"),
+    "_icontains": Relation("_icontains", "__icontains"),
+    "_regex": Relation("_regex", "__regex"),
+}
 
 # create conjunctions
-Conjunction("_or", lambda items: reduce(lambda a, b: a | b, items))
-Conjunction("_and", lambda items: reduce(lambda a, b: a & b, items))
-Conjunction("_not", lambda items: ~reduce(lambda a, b: a & b, items))
+conjunctions: dict[ConjunctionTypes, Conjunction] = {
+    "_or": Conjunction("_or", lambda items: reduce(lambda a, b: a | b, items)),
+    "_and": Conjunction("_and", lambda items: reduce(lambda a, b: a & b, items)),
+    "_not": Conjunction("_not", lambda items: ~reduce(lambda a, b: a & b, items)),
+}
+
+allKeywords: dict[str, Conjunction | Relation] = {
+    **relationships,
+    **conjunctions,
+}
 
 # make query func
 # TODO: implement cache
-def makeQuery(query: dict, **kwargs):
-    parent = kwargs.get("parent")
-    res = []
+def makeQuery(query: dict[str, typing.Any], **kwargs: str):
+    parent: str = kwargs.get("parent", "")
+    res: list[Q] = []
 
     for item, value in query.items():
-        if qkw := QKeyword.get(item):
-            qkw = cast(Conjunction | Relation, qkw)
+        if modifier := allKeywords.get(item):
 
-            if type(qkw) == Relation:
-                res.append(qkw.resolve(parent, value))
-            elif type(qkw) == Conjunction:
+            if type(modifier) == Relation:
+                modifier = typing.cast(Relation, modifier)
+                res.append(modifier.resolve(parent, value))
+
+            elif type(modifier) == Conjunction:
+                modifier = typing.cast(Conjunction, modifier)
                 assert isinstance(value, Sequence)
-                res.append(qkw.resolve([makeQuery(i, parent=parent) for i in value]))
+                res.append(
+                    modifier.resolve([makeQuery(i, parent=parent) for i in value])
+                )
         else:
             res.append(makeQuery(value, parent=f"{parent}__{item}" if parent else item))
 

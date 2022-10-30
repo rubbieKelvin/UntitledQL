@@ -2,5 +2,6 @@
     "npm.useRootDirectory": true,
     "npm.includeDirectories": [
         "tests/app/"
-    ]
+    ],
+    "python.analysis.typeCheckingMode": "basic"
 }
