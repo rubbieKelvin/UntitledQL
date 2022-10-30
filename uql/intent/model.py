@@ -235,7 +235,7 @@ class ModelIntent:
             Sr = self.modelConfig.createSerializerClass(role)
             return Sr(model).data
 
-        except Exception as e:
+        except BaseException as e:
             raise RequestHandlingError(
                 e.args[0] if len(e.args) > 0 else "Unknown error",
                 errorCode=e.__class__.__name__,
@@ -340,7 +340,7 @@ class ModelIntent:
 
                     res.append(model)
 
-        except Exception as e:
+        except BaseException as e:
             raise RequestHandlingError(
                 e.args[0] if len(e.args) > 0 else "Unknown error",
                 errorCode=e.__class__.__name__,
@@ -410,7 +410,7 @@ class ModelIntent:
             obj.save(update_fields=partial.keys())
             return Sr(obj).data
 
-        except Exception as e:
+        except BaseException as e:
             _e404 = type(e) == self.modelConfig.model.DoesNotExist
 
             raise RequestHandlingError(
@@ -495,7 +495,7 @@ class ModelIntent:
                     obj.save(update_fields=partialUpdate.keys())
                     res.append(obj)
 
-        except Exception as e:
+        except BaseException as e:
             raise RequestHandlingError(
                 e.args[0] if len(e.args) > 0 else "Unknown error",
                 errorCode=e.__class__.__name__,

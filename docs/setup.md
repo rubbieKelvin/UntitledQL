@@ -56,7 +56,7 @@ Setting up your project for uql requires some configuration, but first off, let'
 pip install uql
 ```
 
-### Installing from git repo
+### Installing from git repo (recomended)
 
 ```bash
 pip install git+https://github.com/rubbieKelvin/UntitledQL.git
@@ -130,4 +130,15 @@ Run server and open the local link in the browser or postman, you should get thi
 }
 ```
 
-Next: [writing functions](writing-funcitons.md)
+If we make an empty post request, we should get the following
+
+```json
+{
+  "message": "No specified intent",
+  "errorCode": "UQL:NO_INTENT",
+  "statusCode": 400,
+  "summary": "Could not find any specified intent during request call"
+}
+```
+
+Next: [functions](functions.md)

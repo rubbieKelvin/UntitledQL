@@ -1,7 +1,8 @@
 # UntitledQL
 
-> ⚠ project is still in development and things ~~might~~ will break
-> ⚠ this isn't a query language of any sort.
+> ⚠ Warning\
+> Project is still in development and things ~~might~~ will break.\
+> This isn't a query language.
 
 UntitledQL is a rest implementation with stolen features from graphql. While this doesnt resemble graphql by any means, UQL might offer some features simliar to gql;
 
@@ -15,4 +16,7 @@ UntitledQL is a rest implementation with stolen features from graphql. While thi
 
 ## Docs
 
+> 🛈 Refrences to api calls are written in Curl
+
 - [Setup](docs/setup.md)
+- [Functions](docs/functions.md)

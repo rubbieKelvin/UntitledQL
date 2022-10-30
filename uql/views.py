@@ -7,6 +7,9 @@ from .utils.types import isArray
 from .utils.types import isMap
 from .exceptions import RequestHandlingError
 from .constants import errors as errorConstants
+from .constants.types import UQLRequestBodyTyping
+from .constants.types import UQLResponseBodyTyping
+from django.http.request import QueryDict
 
 from rest_framework.views import APIView
 from rest_framework.request import Request
@@ -14,28 +17,8 @@ from rest_framework.response import Response
 from rest_framework.parsers import JSONParser
 from rest_framework.parsers import MultiPartParser
 
+import json
 import typing
-from typing_extensions import NotRequired
-
-
-class UQLRequestBodyTyping(typing.TypedDict):
-    """Base structure for uql request input"""
-
-    intent: str | None
-    fields: bool | dict | None
-    args: dict[str, typing.Any]
-
-
-class UQLResponseMetaTyping(typing.TypedDict):
-    hasError: bool
-
-
-class UQLResponseBodyTyping(typing.TypedDict):
-    data: typing.Mapping | typing.Sequence | None
-    error: t.ErrorTyping | None
-    warning: NotRequired[str | None]
-    statusCode: int
-    meta: UQLResponseMetaTyping
 
 
 def UQLView(config: type[UQLConfig]) -> type[APIView]:
@@ -58,7 +41,7 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
             try:
                 res: UQLResponseBodyTyping = fn(*args, **kwargs)
 
-            except Exception as e:
+            except BaseException as e:
                 if config.raiseExceptions:
                     # raise error as per stated in app's configuration
                     raise e
@@ -80,6 +63,7 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                             e.args[0] if len(e.args) > 0 else e.__class__.__name__,
                             errorCode=e.__class__.__name__,
                             statusCode=e.args[1] if len(e.args) > 1 else 500,
+                            summary=None,
                         )
                     )
 
@@ -135,7 +119,7 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
             handler: IntentFunction = self.ROOT[intent]
 
             warning = (
-                "fields not specified, you might get an empty data"
+                "fields not specified (or set to null), you might get an empty data"
                 if fields == None
                 else None
             )
@@ -159,7 +143,6 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                     "error": None,
                     "warning": warning,
                     "statusCode": 200,
-                    "meta": {"hasError": False},
                 }
 
             # psuedo data function
@@ -190,7 +173,6 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                 "warning": warning,
                 "statusCode": 200,
                 "error": None,
-                "meta": {"hasError": False},
             }
 
         def get(self, request: Request) -> Response:
@@ -204,6 +186,14 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
         ) -> UQLResponseBodyTyping | list[UQLResponseBodyTyping]:
             # get response data
             body = request.data
+
+            if type(body) == QueryDict:
+                formdata_body = typing.cast(QueryDict, request.data)
+                # look for '$uql.request.body' in formdata
+                body = typing.cast(
+                    dict | list,
+                    json.loads(formdata_body.get("$uql.request.body", "{}")),
+                )
 
             if type(body) == dict:
                 body = typing.cast(UQLRequestBodyTyping, body)

@@ -1,13 +1,4 @@
-from typing import Sequence
-from typing import Mapping
-from typing import TypedDict
-
-
-class ErrorTyping(TypedDict):
-    message: str
-    errorCode: int | str | None
-    statusCode: int | None
-    summary: str | None
+from uql.constants.types import ErrorTyping
 
 
 def error(
