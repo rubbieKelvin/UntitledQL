@@ -11,6 +11,8 @@ from .constants import errors as errorConstants
 from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.parsers import JSONParser
+from rest_framework.parsers import MultiPartParser
 
 import typing
 from typing_extensions import NotRequired
@@ -57,7 +59,7 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                 res: UQLResponseBodyTyping = fn(*args, **kwargs)
 
             except Exception as e:
-                if config.raise_exceptions:
+                if config.raiseExceptions:
                     # raise error as per stated in app's configuration
                     raise e
 
@@ -103,6 +105,7 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
 
     class Adapter(APIView):
         ROOT: dict[str, IntentFunction] = {**modelRoots, **functionRoots}
+        parser_classes = [JSONParser, MultiPartParser]
 
         def handleIntent(
             self,
@@ -191,11 +194,9 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
             }
 
         def get(self, request: Request) -> Response:
-            if config.show_docs:
-                root = self.ROOT
-                result = {key: {**val.json(), "name": key} for key, val in root.items()}
-                return Response(result)
-            return Response(data={"msg": 'set "show_docs" to True in uql config'})
+            root = self.ROOT
+            schema = {key: {**val.json(), "name": key} for key, val in root.items()}
+            return Response({"schema": schema or None})
 
         @rootErrorHandler
         def post(

@@ -10,10 +10,9 @@ if TYPE_CHECKING:
 
 
 class UQLConfig:
-    show_docs = True  # allows get request to show docs
-    raise_exceptions = True  # raise exception if an error occurs in intent handler
     models: list[ModelConfig] = []  # model configurations for unrest
     functions: list[IntentFunction] = []  # functions config for unrest
+    raiseExceptions = True  # raise exception if an error occurs in intent handler
 
     @staticmethod
     def getAuthenticatedUserRoles(user: Model) -> str:
