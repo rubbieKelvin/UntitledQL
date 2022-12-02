@@ -566,6 +566,11 @@ class ModelIntent:
                 "", errorCode=errorConstants.OBJECT_NOT_FOUND, statusCode=404
             )
 
+    # TODO: ...
+    def deleteWhere(self, request: Request, args: dict[str, typing.Any]):
+        """TODO: delete a set of rows that match the where query"""
+        ...
+
     @property
     def intenthandlers(self) -> dict[str, IntentFunction]:
         name = self.modelConfig.name

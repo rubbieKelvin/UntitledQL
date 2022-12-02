@@ -10,9 +10,9 @@ if TYPE_CHECKING:
 
 
 class UQLConfig:
-    models: list[ModelConfig] = []  # model configurations for unrest
-    functions: list[IntentFunction] = []  # functions config for unrest
-    raiseExceptions = True  # raise exception if an error occurs in intent handler
+    models: list[ModelConfig] = []  #: model configurations for unrest
+    functions: list[IntentFunction] = []  #: functions config for unrest
+    raiseExceptions = True  #: raise exception if an error occurs in intent handler
 
     @staticmethod
     def getAuthenticatedUserRoles(user: Model) -> str:
