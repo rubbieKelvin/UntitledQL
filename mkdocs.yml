@@ -1,0 +1,12 @@
+site_name: UntitledQL
+site_url: https://github.com/rubbiekelvin/UntitledQL/
+repo_url: https://github.com/rubbiekelvin/UntitledQL/
+repo_name: rubbiekelvin/UntitledQL
+theme:
+  name: material
+  palette: 
+    scheme: default
+    primary: black
+    accent: blue
+  features:
+    - navigation.instant
