@@ -180,9 +180,12 @@ class ModelConfig:
 
         selectPermission = cast(SelectPermissionTyping, selectPermission)
 
+        # refer to this instance
+        config_instance = self
+
         class Sr(ModelSerializer):
             class Meta:
-                model = self.model
+                model = config_instance.model
                 # for the fields, we want to include all the specified
                 # foreign keys along side the base fields.
                 # setting fields to '__all__' isnt enough to fetch all specified fields from column,
@@ -190,21 +193,21 @@ class ModelConfig:
                 fields = (
                     [
                         field.name
-                        for field in self.model._meta.get_fields()
+                        for field in config_instance.model._meta.get_fields()
                         if isinstance(field, Field)
                     ]
-                    + [fk for fk in self.foreignKeys.keys()]
+                    + [fk for fk in config_instance.foreignKeys.keys()]
                     if selectPermission["column"] == CellFlags.ALL
                     else selectPermission["column"]
                 )
 
-            def get_fields(*_):  # TODO: test if *_ could replace self
+            def get_fields(self, *args):
                 # get already defined fields from serializer class
                 fields = super().get_fields()
 
                 # create serializers for defined foreignkeys
                 # and inject them into serializer fields
-                for name, fk in self.foreignKeys.items():
+                for name, fk in config_instance.foreignKeys.items():
                     if fk["model"] in parents:
                         # skip this model if it's been referenced somewhere
                         # from this node up from the parent's model root
@@ -214,7 +217,7 @@ class ModelConfig:
 
                     if modelConfig:
                         _sr = modelConfig.createSerializerClass(
-                            role, _parents=[*parents, self.model]
+                            role, _parents=[*parents, config_instance.model]
                         )
                         fields[name] = _sr(many=fk["type"] == "LIST")
                 return fields
