@@ -49,22 +49,33 @@ def UQLView(config: type[UQLConfig]) -> type[APIView]:
                 if type(e) == RequestHandlingError:
                     e = typing.cast(RequestHandlingError, e)
                     return Response(
-                        t.error(
-                            e.message,
-                            errorCode=e.errorCode,
-                            statusCode=e.statusCode,
-                            summary=e.summary,
-                        ),
+                        {
+                            "data": None,
+                            "warning": None,
+                            "statusCode": e.statusCode,
+                            "error": t.error(
+                                e.message,
+                                errorCode=e.errorCode,
+                                statusCode=e.statusCode,
+                                summary=e.summary,
+                            ),
+                        },
                         status=e.statusCode,
                     )
                 else:
+                    statusCode = e.args[1] if len(e.args) > 1 else 500
                     return Response(
-                        t.error(
-                            e.args[0] if len(e.args) > 0 else e.__class__.__name__,
-                            errorCode=e.__class__.__name__,
-                            statusCode=e.args[1] if len(e.args) > 1 else 500,
-                            summary=None,
-                        )
+                        {
+                            "data": None,
+                            "warning": None,
+                            "statusCode": statusCode,
+                            "error": t.error(
+                                e.args[0] if len(e.args) > 0 else e.__class__.__name__,
+                                errorCode=e.__class__.__name__,
+                                statusCode=statusCode,
+                                summary=None,
+                            ),
+                        }
                     )
 
             if type(res) == list:
