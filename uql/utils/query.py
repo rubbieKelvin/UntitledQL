@@ -1,14 +1,30 @@
-# TODO: properly explain/document this file, cus me sef i dont understand
+# This script defines a function makeQuery that takes in a dictionary
+# representing a search query, and returns a Django Q object that can be used to filter
+# a queryset. The search query dictionary can contain nested dictionaries,
+# and the keys in the dictionaries correspond to various types of search criteria,
+# including equality checks, inequality checks, range checks, and membership checks.
+# These criteria are represented using special keywords,
+# such as _eq, _gt, _gte, _lt, _lte, _in, _nin, _contains, _icontains, _regex, _or, _and,
+# and _not, which are stored in a dictionary.
+# The makeQuery function recursively traverses the search query dictionary,
+# using the critaroin dictionary to identify the type of each criterion
+# and to create the appropriate Django Q object for that criterion.
+# If a key in the search query dictionary does not correspond to a criterion,
+# it is treated as a field name and the search continues recursively on its corresponding value.
+# The Q objects created for each criterion are then combined using the _or
+# and _and conjunctions, or negated using the _not conjunction,
+# to create the final Q object that represents the entire search query.
+
 import typing
+from functools import reduce, lru_cache
 from django.db.models import Q
-from functools import reduce
 from collections.abc import Sequence
 
 
 ConjunctionTypes: typing.TypeAlias = (
     typing.Literal["_or"] | typing.Literal["_and"] | typing.Literal["_not"]
 )
-RelationTypes: typing.TypeAlias = (
+CriterionTypes: typing.TypeAlias = (
     typing.Literal["_eq"]
     | typing.Literal["_neq"]
     | typing.Literal["_gt"]
@@ -23,16 +39,30 @@ RelationTypes: typing.TypeAlias = (
 )
 
 
-class Relation:
-    def __init__(self, name: RelationTypes, djtype: str, negate=False) -> None:
+class Criterion:
+    def __init__(self, name: CriterionTypes, djtype: str, negate=False) -> None:
         """Direct relation between a key and it's value"""
         self.name = name
         self.djtype = djtype
         self.negate = negate
 
     def resolve(self, key: str, value: typing.Any) -> Q:
-        res = Q(**{f"{key}{self.djtype}": value})
-        return ~res if self.negate else res
+        if self.name in [
+            "_eq",
+            "_neq",
+            "_gt",
+            "_gte",
+            "_lt",
+            "_lte",
+            "_in",
+            "_nin",
+            "_contains",
+            "_icontains",
+            "_regex",
+        ]:
+            res = Q(**{f"{key}{self.djtype}": value})
+            return ~res if self.negate else res
+        raise ValueError(f"Invalid criterion")
 
 
 class Conjunction:
@@ -45,18 +75,18 @@ class Conjunction:
 
 
 # create relationships
-relationships: dict[RelationTypes, Relation] = {
-    "_eq": Relation("_eq", ""),
-    "_neq": Relation("_neq", "", negate=True),
-    "_gt": Relation("_gt", "__gt"),
-    "_gte": Relation("_gte", "__gte"),
-    "_lt": Relation("_lt", "__lt"),
-    "_lte": Relation("_lte", "__lte"),
-    "_in": Relation("_in", "__in"),
-    "_nin": Relation("_nin", "__in", negate=True),
-    "_contains": Relation("_contains", "__contains"),
-    "_icontains": Relation("_icontains", "__icontains"),
-    "_regex": Relation("_regex", "__regex"),
+criterions: dict[CriterionTypes, Criterion] = {
+    "_eq": Criterion("_eq", ""),
+    "_neq": Criterion("_neq", "", negate=True),
+    "_gt": Criterion("_gt", "__gt"),
+    "_gte": Criterion("_gte", "__gte"),
+    "_lt": Criterion("_lt", "__lt"),
+    "_lte": Criterion("_lte", "__lte"),
+    "_in": Criterion("_in", "__in"),
+    "_nin": Criterion("_nin", "__in", negate=True),
+    "_contains": Criterion("_contains", "__contains"),
+    "_icontains": Criterion("_icontains", "__icontains"),
+    "_regex": Criterion("_regex", "__regex"),
 }
 
 # create conjunctions
@@ -66,31 +96,34 @@ conjunctions: dict[ConjunctionTypes, Conjunction] = {
     "_not": Conjunction("_not", lambda items: ~reduce(lambda a, b: a & b, items)),
 }
 
-allKeywords: dict[str, Conjunction | Relation] = {
-    **relationships,
-    **conjunctions,
-}
-
 # make query func
-# TODO: implement cache
-def makeQuery(query: dict[str, typing.Any], **kwargs: str):
+@lru_cache(maxsize=None)
+def makeQuery(query: dict[str, typing.Any], **kwargs: str) -> Q:
+    # Get parent field name, if any
     parent: str = kwargs.get("parent", "")
+
+    # Initialize list to store Q objects for each criterion
     res: list[Q] = []
 
     for item, value in query.items():
-        if modifier := allKeywords.get(item):
+        # check if item is a criterion or conjunction
+        criterion = criterions.get(typing.cast(CriterionTypes, item))
+        conjunction = conjunctions.get(typing.cast(ConjunctionTypes, item))
 
-            if type(modifier) == Relation:
-                modifier = typing.cast(Relation, modifier)
-                res.append(modifier.resolve(parent, value))
+        if criterion:
+            # If item is a criterion, resolve it and add the resulting Q object to the list
+            res.append(criterion.resolve(parent, value))
 
-            elif type(modifier) == Conjunction:
-                modifier = typing.cast(Conjunction, modifier)
-                assert isinstance(value, Sequence)
-                res.append(
-                    modifier.resolve([makeQuery(i, parent=parent) for i in value])
-                )
+        elif conjunction:
+            # If item is a conjunction, recursively resolve its values and combine them using the conjunction
+            assert isinstance(value, Sequence)
+            res.append(
+                conjunction.resolve([makeQuery(i, parent=parent) for i in value])
+            )
+
         else:
+            # If item is not a criterion or conjunction, treat it as a field name and recursively resolve its value
             res.append(makeQuery(value, parent=f"{parent}__{item}" if parent else item))
 
+    # Combine all Q objects using the _and conjunction
     return reduce(lambda a, b: a & b, res)

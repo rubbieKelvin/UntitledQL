@@ -1,6 +1,6 @@
+from .typecheck import isMap
+from .typecheck import isArray
 from collections.abc import Mapping
-from .types import isMap
-from .types import isArray
 
 
 def selectKeys(data: Mapping, structure: dict) -> dict:
