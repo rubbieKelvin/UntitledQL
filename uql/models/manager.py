@@ -9,6 +9,7 @@ from . import serializers
 from django.db import models
 from django.db import transaction
 from rest_framework.request import Request
+from . import ModelOperations
 
 if typing.TYPE_CHECKING:
     from uql.views import UQLView
@@ -383,7 +384,7 @@ class ModelOperationManager:
         name = self.exposedmodel.name
 
         rel = {
-            constants.ModelOperations.SELECT: (
+            ModelOperations.SELECT: (
                 f"models.{name}.find",
                 ApiFunction(
                     self.find,
@@ -391,7 +392,7 @@ class ModelOperationManager:
                     description=f"Select a single row from {name}",
                 ),
             ),
-            constants.ModelOperations.SELECT_MANY: (
+            ModelOperations.SELECT_MANY: (
                 f"models.{name}.findmany",
                 ApiFunction(
                     self.findMany,
@@ -399,7 +400,7 @@ class ModelOperationManager:
                     description=f"Select many rows from {name}",
                 ),
             ),
-            constants.ModelOperations.INSERT: (
+            ModelOperations.INSERT: (
                 f"models.{name}.insert",
                 ApiFunction(
                     self.insert,
@@ -407,7 +408,7 @@ class ModelOperationManager:
                     description=f"Insert an object into {name}",
                 ),
             ),
-            constants.ModelOperations.UPDATE: (
+            ModelOperations.UPDATE: (
                 f"models.{name}.update",
                 ApiFunction(
                     self.update,
@@ -415,7 +416,7 @@ class ModelOperationManager:
                     description=f"Update the fields of {name}",
                 ),
             ),
-            constants.ModelOperations.DELETE: (
+            ModelOperations.DELETE: (
                 f"models.{name}.delete",
                 ApiFunction(
                     self.delete,

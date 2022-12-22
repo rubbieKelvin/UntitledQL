@@ -9,6 +9,44 @@ from uql import types
 from uql import constants
 
 
+class ModelOperations(enum.Enum):
+    INSERT = "INSERT"
+    SELECT = "SELECT"
+    DELETE = "DELETE"
+    UPDATE = "UPDATE"
+    SELECT_MANY = "SELECT_MANY"
+    # INSERT_MANY = "INSERT_MANY"
+    # DELETE_MANY = "DELETE_MANY"
+    # UPDATE_MANY = "UPDATE_MANY"
+
+    @staticmethod
+    def all():
+        return [
+            ModelOperations.INSERT,
+            ModelOperations.SELECT,
+            ModelOperations.DELETE,
+            ModelOperations.UPDATE,
+            ModelOperations.SELECT_MANY,
+            # ModelOperations.INSERT_MANY,
+            # ModelOperations.DELETE_MANY,
+            # ModelOperations.UPDATE_MANY,
+        ]
+
+    @staticmethod
+    def readonly():
+        return [ModelOperations.SELECT, ModelOperations.SELECT_MANY]
+
+    @staticmethod
+    def readonly_and_single_write():
+        return [
+            ModelOperations.SELECT,
+            ModelOperations.SELECT_MANY,
+            ModelOperations.INSERT,
+            ModelOperations.UPDATE,
+            ModelOperations.DELETE,
+        ]
+
+
 def useFullPermissionAccess() -> types.ModelPermissionType:
     return {
         "delete": {"row": constants.ALL_ROWS},
@@ -31,7 +69,7 @@ class ExposedModel:
         self,
         *,
         model: type[models.Model],
-        operations: list[constants.ModelOperations] | None = None,
+        operations: list[ModelOperations] | None = None,
     ) -> None:
         self.model = model
         self.rolePermissions: dict[
@@ -39,7 +77,7 @@ class ExposedModel:
         ] = (
             {}
         )  # permission is a role:permissionObject container, keeps permission for each role
-        self.operations = operations or constants.ModelOperations.all()
+        self.operations = operations or ModelOperations.all()
 
         # add model to dictionary
         self.__models[self.name] = self
