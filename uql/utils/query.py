@@ -16,7 +16,7 @@
 # to create the final Q object that represents the entire search query.
 
 import typing
-from functools import reduce, lru_cache
+from functools import reduce
 from django.db.models import Q
 from collections.abc import Sequence
 
@@ -97,7 +97,7 @@ conjunctions: dict[ConjunctionTypes, Conjunction] = {
 }
 
 # make query func
-@lru_cache(maxsize=None)
+# TODO: cache function
 def makeQuery(query: dict[str, typing.Any], **kwargs: str) -> Q:
     # Get parent field name, if any
     parent: str = kwargs.get("parent", "")

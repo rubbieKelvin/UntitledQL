@@ -5,7 +5,6 @@ from rest_framework.views import View
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.parsers import JSONParser
-from django.contrib.auth.models import User
 from django.http.request import QueryDict
 
 from . import types
@@ -79,7 +78,7 @@ class UQLView(View):
 
     @staticmethod
     def getUserRole(
-        user: User,
+        user: typing.Any,
     ) -> str:
         """
         Returns a string describing the role of the given Django user.
