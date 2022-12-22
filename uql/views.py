@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import JSONParser
 from django.http.request import QueryDict
 
+from . import CoreUserRoles
 from . import types
 from . import constants
 from . import exceptions
@@ -16,12 +17,6 @@ from .utils.typecheck import isMap, isArray
 from .functions import ApiFunction
 from .models import ExposedModel
 from .models.manager import ModelOperationManager
-
-
-class CoreUserRoles:
-    ADMIN = "ADMIN"
-    USER = "USER"
-    ANONYMOUS = "ANONYMOUS"
 
 
 class UQLView(View):
