@@ -74,10 +74,30 @@ class ExposedModel:
 
     def addPermission(
         self,
-        role: str,
+        role: str | list[str],
         perimission: typing.Callable[[types.Pk | None], types.ModelPermissionType],
     ) -> "ExposedModel":
-        self.rolePermissions[role] = perimission
+        """
+        Adds a permission to the ExposedModel.
+
+        Parameters:
+            role (str or list[str]): The role or roles to which the permission applies. if a list of string is given,
+            the same permission is applied to all roles
+            perimission (typing.Callable[[types.Pk | None], types.ModelPermissionType]): The permission to be added.
+
+        Returns:
+            ExposedModel: The ExposedModel object with the added permission.
+
+        Raises:
+            TypeError: If role is not a string or a list of strings."""
+
+        if isinstance(role, str):
+            self.rolePermissions[role] = perimission
+        elif isinstance(role, list):
+            for singleRole in role:
+                self.rolePermissions[singleRole] = perimission
+        else:
+            raise TypeError("role should be a string or list of strings")
         return self
 
     def getSerializerClass(self, role: str) -> type[ModelSerializer]:
