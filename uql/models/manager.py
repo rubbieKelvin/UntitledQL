@@ -438,7 +438,7 @@ class ModelOperationManager:
                         {
                             "object": dto.Dictionary(
                                 {
-                                    field: dto.Any(nullable=True)
+                                    field: dto.Any(_name=field, nullable=True)
                                     for field in _getAllModelFields(
                                         self.exposedmodel.model
                                     )
@@ -461,7 +461,7 @@ class ModelOperationManager:
                                     "pk": dto.Any([dto.Number(), dto.String()]),
                                     "fields": dto.Dictionary(
                                         {
-                                            field: dto.Any(nullable=True)
+                                            field: dto.Any(nullable=True, _name=field)
                                             for field in _getAllModelFields(
                                                 self.exposedmodel.model
                                             )
