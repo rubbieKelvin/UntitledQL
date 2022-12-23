@@ -64,7 +64,7 @@ def createUQLView(
 
             # load up function roots
             for function in self.functions:
-                functionsRoots[f"function.{function.name}"] = function
+                functionsRoots[f"functions.{function.name}"] = function
 
             # load up model roots
             for exposedmodel in self.models:
