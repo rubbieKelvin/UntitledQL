@@ -5,6 +5,7 @@ from uql import types
 from uql import exceptions
 from uql.utils import dto
 from uql.utils.query import makeQuery
+from uql.functions import ApiFunction
 
 from . import serializers
 from django.db import models
@@ -15,7 +16,6 @@ from . import ModelOperations
 if typing.TYPE_CHECKING:
     from uql.views import UQLView
     from uql.models import ExposedModel
-    from uql.functions import ApiFunction
 
 ModelOperationPermissionType: typing.TypeAlias = (
     types.SelectPermissionType
