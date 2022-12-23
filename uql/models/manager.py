@@ -105,7 +105,7 @@ class ModelOperationManager:
         PermissionError: if the role does not exist in the permissions dictionary, or if the permission object does not contain the operation key"""
 
         permission_error = PermissionError(
-            f"User{'({id})'.format({id: userId if userId else ''})} with role: '{role}' has no {operation} permission",
+            f"User{'({id})'.format({id: userId}) if userId else ''} with role: '{role}' has no {operation} permission",
             401,
         )
 
