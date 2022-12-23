@@ -7,10 +7,10 @@ from rest_framework.response import Response
 from rest_framework.parsers import JSONParser
 from django.http.request import QueryDict
 
-from . import CoreUserRoles
 from . import types
 from . import constants
 from . import exceptions
+from . import getUserRole as _getUserRole
 
 from .utils.select import selectKeys
 from .utils.typecheck import isMap, isArray
@@ -23,6 +23,7 @@ def createUQLView(
     models: list[ExposedModel],
     functions: list[ApiFunction],
     raiseExceptions: bool = False,
+    userRoleFactory: typing.Callable[[typing.Any], str] = _getUserRole,
 ) -> typing.Type[APIView]:
     class UQLViewClass(APIView):
         parser_classes = [
@@ -79,26 +80,8 @@ def createUQLView(
         ) -> str:
             """
             Returns a string describing the role of the given Django user.
-
-            Parameters:
-                user (django.contrib.auth.models.User): The Django user model to determine the role for.
-
-            Returns:
-                str: A string describing the role of the given user. One of 'USER', 'ADMIN', or 'ANONYMOUS'.
-                Feel free to extend this  to meet your needs.
-
-            Raises:
-                ValueError: If the given user is not a valid Django user model.
-
-            Example:
-                >>> getUserRole(user)
-                'USER'
             """
-            if user.is_authenticated:
-                if user.is_staff:
-                    return CoreUserRoles.ADMIN
-                return CoreUserRoles.USER
-            return CoreUserRoles.ANONYMOUS
+            return userRoleFactory(user)
 
         def rootErrorHandler(
             self,
