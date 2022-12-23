@@ -2,9 +2,7 @@ import re
 import typing
 
 from uql import types
-from uql import constants
-from uql.utils import templates as t
-from uql.exceptions import RequestHandlingError
+from uql.utils import dto
 
 from rest_framework.request import Request
 
@@ -37,10 +35,7 @@ class ApiFunction:
         handler: typing.Callable[[Request, dict[str, typing.Any]], types.IntentResult],
         name: str | None = None,
         description: str | None = None,
-        requiredArgs: tuple | None = None,
-        optionalArgs: tuple | None = None,
-        defaultValues: dict | None = None,
-        allowUnknownArgs=False,
+        rule: dto.Dictionary | None = None,
     ) -> None:
         """A function that can be called with a request and a dictionary of options as arguments.
 
@@ -70,60 +65,32 @@ class ApiFunction:
         """
         self.name = _validateFunctionName(name or handler.__name__)
         self.description = description or handler.__doc__
-        self.requiredArgs = set(requiredArgs) if requiredArgs else set()
-        self.optionalArgs = set(optionalArgs) if optionalArgs else set()
-        self.defaultValues = defaultValues or {}
-        self.args = self.optionalArgs.union(self.requiredArgs)
-        self.allowUnknownArgs = allowUnknownArgs
+        self.rule = rule
         self._handler = handler
 
-    def json(self) -> dict:
+        # instantly name the root rule
+        if self.rule:
+            self.rule.name = "args"
+
+    def toJson(self) -> dict:
         return {
             "name": self.name,
+            "rule": None if self.rule == None else self.rule.toJson(),
             "description": self.description,
-            "requiredArgs": self.requiredArgs,
-            "optionalArgs": self.optionalArgs,
-            "defaultValues": self.defaultValues,
-            "allowUnknownArgs": self.allowUnknownArgs,
         }
 
     def __str__(self) -> str:
         return self.name
 
     def __repr__(self) -> str:
-        return f"{self.name}({','.join([i for i in self.args])})"
+        keys = [] if self.rule == None else self.rule.rules.keys()
+        return f"{self.name}({','.join([i for i in keys])})"
 
     def __call__(
         self, request: Request, options: dict[str, typing.Any]
     ) -> types.IntentResult:
-        # check if required args are present
-        if not (self.requiredArgs.issubset(options.keys())):
-            raise RequestHandlingError(
-                f'Required keys "{self.requiredArgs.difference(options.keys())}" not given in argument',
-                errorCode=constants.MISSING_REQUIRED_ARGUMENT,
-                statusCode=400,
-            )
-
-        # if required args have default argument, raise an error
-        if self.defaultValues and set(self.defaultValues.keys()).issubset(
-            self.requiredArgs
-        ):
-            raise RequestHandlingError(
-                "Required arguments should not have default values",
-                errorCode=constants.DEFAULT_ON_REQUIRED_ARGS,
-                statusCode=500,
-            )
-
-        # if we do mind foreign args, check if all arg in oprions was specified
-        if not self.allowUnknownArgs and not set(options.keys()).issubset(self.args):
-            raise RequestHandlingError(
-                f'Unknown keys "{set(options.keys()).difference(self.args)}"',
-                errorCode=constants.UNKNOWN_ARGS,
-                statusCode=400,
-            )
-
-        for key, val in self.defaultValues.items():
-            options.setdefault(key, val)
+        if self.rule:
+            self.rule.validate(options)
 
         return self._handler(request, options)
 
@@ -131,10 +98,7 @@ class ApiFunction:
     def decorator(
         name: str | None = None,
         description: str | None = None,
-        requiredArgs: tuple | None = None,
-        optionalArgs: tuple | None = None,
-        defaultValues: dict | None = None,
-        allowUnknownArgs: bool = False,
+        rule: dto.Dictionary | None = None,
     ):
         """
         Decorator for defining and registering functions as "intents".
@@ -167,13 +131,7 @@ class ApiFunction:
             ]
         ):
             return ApiFunction(
-                handler=handler,
-                name=name,
-                description=description,
-                requiredArgs=requiredArgs,
-                optionalArgs=optionalArgs,
-                defaultValues=defaultValues,
-                allowUnknownArgs=allowUnknownArgs,
+                handler=handler, name=name, description=description, rule=rule
             )
 
         return _

@@ -1,6 +1,7 @@
 # data transfer objects
 import re
 import typing
+from django.db import models
 
 
 class Rule:
@@ -10,6 +11,9 @@ class Rule:
 
     def validate(self, other: typing.Any) -> None:
         pass
+
+    def toJson(self) -> dict[str, typing.Any]:
+        return {"name": self.name, "nullable": self.nullable, "type": "base"}
 
 
 class String(Rule):
@@ -55,6 +59,21 @@ class String(Rule):
         self.allow_uppercase = allow_uppercase
         self.allow_lowercase = allow_lowercase
         self.pattern = pattern
+
+    def toJson(self) -> dict[str, typing.Any]:
+        return {
+            "type": "string",
+            "name": self.name,
+            "nullable": self.nullable,
+            "min_length": self.min_length,
+            "max_length": self.max_length,
+            "allow_whitespace": self.allow_whitespace,
+            "allow_numeric": self.allow_numeric,
+            "allow_special_characters": self.allow_special_characters,
+            "allow_uppercase": self.allow_uppercase,
+            "allow_lowercase": self.allow_lowercase,
+            "pattern": self.pattern,
+        }
 
     def validate(self, other: str | None) -> None:
         """Validates the string value against the specified rules.
@@ -143,6 +162,16 @@ class Number(Rule):
         self.validators = validators or []
         self.integer_only = integer_only
 
+    def toJson(self) -> dict[str, typing.Any]:
+        return {
+            "type": "number",
+            "name": self.name,
+            "nullable": self.nullable,
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+            "integer_only": self.integer_only,
+        }
+
     def validate(self, other: int | float | None) -> None:
         """Validates the numeric value against the specified rules.
 
@@ -197,6 +226,9 @@ class Boolean(Rule):
     ) -> None:
         super().__init__(_name=_name, nullable=nullable)
 
+    def toJson(self) -> dict[str, typing.Any]:
+        return {"type": "boolean", "name": self.name, "nullable": self.nullable}
+
     def validate(self, other: bool | None) -> None:
         """Validates the boolean value against the specified rules.
 
@@ -233,7 +265,7 @@ class Dictionary(Rule):
 
     def __init__(
         self,
-        rules: dict[str, Rule],
+        rules: dict[str, Rule] | None = None,
         _name: str = "value",
         nullable: bool = False,
         allow_unknown_keys: bool = False,
@@ -245,6 +277,17 @@ class Dictionary(Rule):
         self.allow_unknown_keys = allow_unknown_keys
         self.min_length = min_length
         self.max_length = max_length
+
+    def toJson(self) -> dict[str, typing.Any]:
+        return {
+            "type": "dictionary",
+            "rules": {key: rule.toJson() for key, rule in self.rules.items()},
+            "name": self.name,
+            "nullable": self.nullable,
+            "allow_unknown_keys": self.allow_unknown_keys,
+            "min_length": self.min_length,
+            "max_length": self.max_length,
+        }
 
     def add_rules(self, rules: dict[str, Rule]) -> None:
         """Adds additional validation rules to the dictionary.
@@ -340,6 +383,16 @@ class List(Rule):
         self.min_length = min_length
         self.max_length = max_length
 
+    def toJson(self) -> dict[str, typing.Any]:
+        return {
+            "type": "list",
+            "element_rule": self.element_rule.toJson(),
+            "name": self.name,
+            "nullable": self.nullable,
+            "min_length": self.min_length,
+            "max_length": self.max_length,
+        }
+
     def validate(self, other: list[typing.Any] | None) -> None:
         if other is None:
             if not self.nullable:
@@ -403,6 +456,14 @@ class Any(Rule):
         assert len(rules) > 1, "Two rules are required to use this class"
         self.rules = rules
 
+    def toJson(self) -> dict[str, typing.Any]:
+        return {
+            "type": "any",
+            "rules": [rule.toJson() for rule in self.rules],
+            "name": self.name,
+            "nullable": self.nullable,
+        }
+
     def validate(self, other: typing.Any | None) -> None:
         if other is None:
             if not self.nullable:
@@ -411,15 +472,15 @@ class Any(Rule):
                 )
         else:
             for rule in self.rules:
+                # this class is just an abstract, so let's name it's children it's own name
+                rule.name = self.name
+
                 try:
                     rule.validate(other)
                     return  # value passed at least one rule, so we can return
                 except ValueError:
                     pass
             raise ValueError(f"{self.name} does not meet any of the provided rules")
-
-
-from django.db import models
 
 
 class Model(Rule):
@@ -435,6 +496,16 @@ class Model(Rule):
         self.model = model
         self.field = field
         self.filter = filter
+
+    def toJson(self) -> dict[str, typing.Any]:
+        return {
+            "type": "django.db.models.Model",
+            "model": self.model._meta.label_lower,
+            "field": self.field,
+            "name": self.name,
+            "nullable": self.nullable,
+            "filter": str(self.filter),
+        }
 
     def validate(self, other: typing.Any | None) -> None:
         if other is None:
@@ -474,3 +545,6 @@ class NonNull(Rule):
     def validate(self, other: typing.Any) -> None:
         if other is None:
             raise ValueError(f"{self.name} should not be None.")
+
+    def toJson(self) -> dict[str, typing.Any]:
+        return {"type": "not-null", "name": self.name}

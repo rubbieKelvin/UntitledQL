@@ -3,6 +3,7 @@ import typing
 from uql import constants
 from uql import types
 from uql import exceptions
+from uql.utils import dto
 from uql.utils.query import makeQuery
 
 from . import serializers
@@ -388,15 +389,19 @@ class ModelOperationManager:
                 f"models.{name}.find",
                 ApiFunction(
                     self.find,
-                    requiredArgs=("where",),
                     description=f"Select a single row from {name}",
+                    rule=dto.Dictionary(
+                        {"where": dto.Dictionary(allow_unknown_keys=True)}
+                    ),
                 ),
             ),
             ModelOperations.SELECT_MANY: (
                 f"models.{name}.findmany",
                 ApiFunction(
                     self.findMany,
-                    requiredArgs=("where",),
+                    rule=dto.Dictionary(
+                        {"where": dto.Dictionary(allow_unknown_keys=True)}
+                    ),
                     description=f"Select many rows from {name}",
                 ),
             ),
@@ -404,7 +409,10 @@ class ModelOperationManager:
                 f"models.{name}.insert",
                 ApiFunction(
                     self.insert,
-                    requiredArgs=("object",),
+                    # requiredArgs=("object",),
+                    rule=dto.Dictionary(
+                        {"object": dto.Dictionary(allow_unknown_keys=True)}
+                    ),
                     description=f"Insert an object into {name}",
                 ),
             ),
@@ -412,16 +420,25 @@ class ModelOperationManager:
                 f"models.{name}.update",
                 ApiFunction(
                     self.update,
-                    requiredArgs=("partial",),
                     description=f"Update the fields of {name}",
+                    rule=dto.Dictionary(
+                        {
+                            "partial": dto.Dictionary(
+                                {
+                                    "pk": dto.Any([dto.Number(), dto.String()]),
+                                    "fields": dto.Dictionary(allow_unknown_keys=True),
+                                }
+                            )
+                        }
+                    ),
                 ),
             ),
             ModelOperations.DELETE: (
                 f"models.{name}.delete",
                 ApiFunction(
                     self.delete,
-                    requiredArgs=("pk",),
                     description=f"Delete a(n) {name} instance with the given pk",
+                    rule=dto.Dictionary({"pk": dto.Any([dto.String(), dto.Number()])}),
                 ),
             ),
         }

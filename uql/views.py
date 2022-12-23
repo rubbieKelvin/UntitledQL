@@ -177,7 +177,7 @@ class UQLView(View):
         return _
 
     def get(self, request: Request) -> Response:
-        schema = {key: {**val.json(), "name": key} for key, val in self.root.items()}
+        schema = {key: {**val.toJson(), "name": key} for key, val in self.root.items()}
         return Response({"schema": schema or None})
 
     def handleIntent(
