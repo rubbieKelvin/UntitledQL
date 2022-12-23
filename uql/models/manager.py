@@ -14,7 +14,6 @@ from rest_framework.request import Request
 from . import ModelOperations
 
 if typing.TYPE_CHECKING:
-    from uql.views import UQLView
     from uql.models import ExposedModel
 
 ModelOperationPermissionType: typing.TypeAlias = (
@@ -28,7 +27,7 @@ ModelOperationPermissionType: typing.TypeAlias = (
 class ModelOperationManager:
     """Holds the functions for handling model operations like select, delete ..."""
 
-    def __init__(self, app: "UQLView", exposedmodel: "ExposedModel") -> None:
+    def __init__(self, app, exposedmodel: "ExposedModel") -> None:
         self.exposedmodel = exposedmodel
         self.app = app
 
