@@ -439,22 +439,27 @@ class Any(Rule):
         ...     [String(min_length=3), String(max_length=5)],
         ...     nullable=True,
         ... ).validate(None)
+        >>> Any().validate(0)
+        >>> Any().validate(True)
+        >>> Any().validate("hi")
 
     Args:
-        rules (List[Rule]): A list of validation rules that the value being compared against must pass at least one of.
+        rules (List[Rule], optional): A list of validation rules that the value being compared against must pass at least one of.
         _name (str, optional): The name of the value being validated. Defaults to "value".
         nullable (bool, optional): Whether or not the value being validated can be None. Defaults to False.
     """
 
     def __init__(
         self,
-        rules: list[Rule],
+        rules: list[Rule] | None = None,
         _name: str = "value",
         nullable: bool = False,
     ) -> None:
         super().__init__(_name=_name, nullable=nullable)
-        assert len(rules) > 1, "Two rules are required to use this class"
-        self.rules = rules
+        self.rules = rules or []
+        assert (
+            len(self.rules) > 1 or len(self.rules) == 0
+        ), "Two rules, or None are required to use this class"
 
     def toJson(self) -> dict[str, typing.Any]:
         return {
@@ -471,6 +476,10 @@ class Any(Rule):
                     f"{self.name} is None but nullable flag is set to False"
                 )
         else:
+            if not self.rules:
+                # if no rules where given just pass
+                return
+
             for rule in self.rules:
                 # this class is just an abstract, so let's name it's children it's own name
                 rule.name = self.name

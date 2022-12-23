@@ -6,6 +6,7 @@ from uql import exceptions
 from uql.utils import dto
 from uql.utils.query import makeQuery
 from uql.functions import ApiFunction
+from uql.models.serializers import _getAllModelFields
 
 from . import serializers
 from django.db import models
@@ -139,22 +140,8 @@ class ModelOperationManager:
 
         return getattr(request.user, "pk", None)
 
-    @typing.overload
-    def _find(
-        self, request: Request, args: dict[str, typing.Any], many: typing.Literal[False]
-    ) -> dict[str, typing.Any]:
-        ...
-
-    @typing.overload
-    def _find(
-        self, request: Request, args: dict[str, typing.Any], many: typing.Literal[True]
-    ) -> list[dict[str, typing.Any]]:
-        ...
-
-    def _find(
-        self, request: Request, args: dict[str, typing.Any], many=False
-    ) -> dict[str, typing.Any] | list[dict[str, typing.Any]]:
-        """Returns a single/multiple object from models.
+    def find(self, request: Request, args: dict[str, typing.Any]):
+        """Returns a single object from models by primary key pk.
 
         This method retrieves a single/multiple objects depending on the `many` flag, from the specified models, using the
         provided request and arguments to determine the object to be returned. If
@@ -167,7 +154,51 @@ class ModelOperationManager:
                 user making the request.
             args (dict): A dictionary of arguments, including the optional `where`
                 argument used to filter the queryset of objects.
-            many (bool): A flag that manipulates the return type as one object or many
+
+        Raises:
+            Interruption: If an error occurs while retrieving or serializing the
+                object.
+
+        Returns:
+            Any: The serialized data for the retrieved object.
+        """
+
+        # arguments
+        pk: types.Pk | None = args.get("pk")
+
+        # ...
+        role = self.app.getUserRole(request.user)
+        sr = self.exposedmodel.getSerializerClass(role)
+        select_permission = ModelOperationManager.getPermission(
+            role,
+            "select",
+            self.exposedmodel.rolePermissions,
+            ModelOperationManager.getUserPkFromRequest(request),
+        )
+
+        queryset = (
+            self.exposedmodel.model.objects.all()
+            if select_permission["row"] == constants.ALL_ROWS
+            else self.exposedmodel.model.objects.filter(select_permission["row"])
+        )
+
+        return sr(queryset.get(pk=pk)).data
+
+    def findMany(self, request: Request, args: dict[str, typing.Any]):
+        # return self._find(request, args, True)
+        """Returns multiple object from models.
+
+        This method retrieves a single/multiple objects depending on the `many` flag, from the specified models, using the
+        provided request and arguments to determine the object to be returned. If
+        the `where` argument is provided, it is used to filter the queryset of
+        objects. The object is then serialized using the appropriate serializer
+        class for the user's role, and the serialized data is returned.
+
+        Args:
+            request (Request): A request object containing information about the
+                user making the request.
+            args (dict): A dictionary of arguments, including the optional `where`
+                argument used to filter the queryset of objects.
 
         Raises:
             Interruption: If an error occurs while retrieving or serializing the
@@ -197,17 +228,7 @@ class ModelOperationManager:
             else self.exposedmodel.model.objects.filter(select_permission["row"])
         )
 
-        if not many:
-            instance = queryset.get(query) if query else queryset.first()
-            return sr(instance).data
-
         return sr(queryset.filter(query) if query else queryset, many=True).data
-
-    def find(self, request: Request, args: dict[str, typing.Any]):
-        return self._find(request, args, False)
-
-    def findMany(self, request: Request, args: dict[str, typing.Any]):
-        return self._find(request, args, True)
 
     def _insertSingle(
         self, request: Request, objectData: dict[str, types.JsonData | models.Model]
@@ -390,7 +411,11 @@ class ModelOperationManager:
                     self.find,
                     description=f"Select a single row from {name}",
                     rule=dto.Dictionary(
-                        {"where": dto.Dictionary(allow_unknown_keys=True)}
+                        {
+                            "pk": dto.Any(
+                                [dto.String(min_length=1), dto.Number(minimum=1)]
+                            )
+                        }
                     ),
                 ),
             ),
@@ -410,7 +435,16 @@ class ModelOperationManager:
                     self.insert,
                     # requiredArgs=("object",),
                     rule=dto.Dictionary(
-                        {"object": dto.Dictionary(allow_unknown_keys=True)}
+                        {
+                            "object": dto.Dictionary(
+                                {
+                                    field: dto.Any(nullable=True)
+                                    for field in _getAllModelFields(
+                                        self.exposedmodel.model
+                                    )
+                                }
+                            )
+                        }
                     ),
                     description=f"Insert an object into {name}",
                 ),
@@ -425,7 +459,14 @@ class ModelOperationManager:
                             "partial": dto.Dictionary(
                                 {
                                     "pk": dto.Any([dto.Number(), dto.String()]),
-                                    "fields": dto.Dictionary(allow_unknown_keys=True),
+                                    "fields": dto.Dictionary(
+                                        {
+                                            field: dto.Any(nullable=True)
+                                            for field in _getAllModelFields(
+                                                self.exposedmodel.model
+                                            )
+                                        }
+                                    ),
                                 }
                             )
                         }
