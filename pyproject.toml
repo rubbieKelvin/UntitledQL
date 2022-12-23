@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "uql"
-version = "0.1.1"
+version = "1.0.1"
 description = "Application layer for building Django apps with a breeze"
 authors = ["rubbie kelvin voltsman <rubbiekelvinvoltsman@gmail.com>"]
 license = "GNU"
