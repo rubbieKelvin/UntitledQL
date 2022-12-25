@@ -139,11 +139,15 @@ def createUQLView(
                             },
                         }
                     else:
+                        statusCode = e.args[1] if len(e.args) > 1 else 500
+                        if not isinstance(statusCode, int):
+                            statusCode = 500
+
                         _response = {
                             "_appname": "uql",
                             "data": None,
                             "warning": None,
-                            "statusCode": e.args[1] if len(e.args) > 1 else 500,
+                            "statusCode": statusCode,
                             "error": {
                                 "message": e.args[0]
                                 if len(e.args) > 0
