@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.parsers import JSONParser
+from rest_framework.parsers import FormParser
+from rest_framework.parsers import MultiPartParser
 from django.http.request import QueryDict
 
 from . import types
@@ -26,9 +28,7 @@ def createUQLView(
     userRoleFactory: typing.Callable[[typing.Any], str] = _getUserRole,
 ) -> typing.Type[APIView]:
     class UQLViewClass(APIView):
-        parser_classes = [
-            JSONParser,
-        ]
+        parser_classes = [JSONParser, FormParser, MultiPartParser]
 
         def __init__(
             self,
