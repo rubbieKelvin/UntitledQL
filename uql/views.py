@@ -140,6 +140,10 @@ def createUQLView(
                         }
                     else:
                         statusCode = e.args[1] if len(e.args) > 1 else 500
+                        
+                        if isinstance(statusCode, str) and statusCode.isdigit():
+                            statusCode = int(statusCode, base=10)
+                        
                         if not isinstance(statusCode, int):
                             statusCode = 500
 

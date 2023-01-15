@@ -99,7 +99,7 @@ class ApiFunction:
 
         # check for permission
         if self.permission_classes:
-            error = ValidationError("Unauthorised operation")
+            error = ValidationError("Unauthorised operation", "401")
 
             for permission in self.permission_classes:
                 if inspect.isfunction(permission):
