@@ -1,10 +1,13 @@
 import re
 import typing
+import inspect
 
 from uql import types
 from uql.utils import dto
+from django.core.exceptions import ValidationError
 
 from rest_framework.request import Request
+from rest_framework.permissions import BasePermission
 
 
 def _validateFunctionName(name: str) -> str:
@@ -36,6 +39,10 @@ class ApiFunction:
         name: str | None = None,
         description: str | None = None,
         rule: dto.Dictionary | None = None,
+        permission_classes: list[
+            typing.Callable[[Request], bool] | typing.Type[BasePermission]
+        ]
+        | None = None,
     ) -> None:
         """A function that can be called with a request and a dictionary of options as arguments.
 
@@ -48,24 +55,21 @@ class ApiFunction:
         return the result.
 
         Args:
-            handler (typing.Callable[[Request, dict[str, typing.Any]], dict|list|tuple]): The function
-                to be called with the request and options as arguments.
-            name (str, optional): The name of the function. Defaults to the name of the handler
-                function.
-            description (str, optional): A description of the function. Defaults to the docstring of the
-                handler function.
-            requiredArgs (tuple, optional): A tuple of required arguments for the function. Defaults to
-                an empty tuple.
-            optionalArgs (tuple, optional): A tuple of optional arguments for the function. Defaults to
-                an empty tuple.
-            defaultValues (dict, optional): A dictionary of default values for optional arguments.
-                Defaults to an empty dictionary.
-            allowUnknownArgs (bool, optional): A flag indicating if the function should allow unknown
-                arguments in the options dictionary. Defaults to False.
+            handler (typing.Callable[[Request, dict[str, typing.Any]], dict|list|tuple]):
+                A callable function that takes a Request object and a dictionary of options as arguments and returns an IntentResult. This function is the core of the API endpoint and is wrapped by the ApiFunction class.
+            name (str, optional):
+                A string representing the name of the function. If not provided, the name of the handler function will be used.
+            description (str, optional):
+                A string representing a description of the function. If not provided, the docstring of the handler function will be used.
+            rule (dto.Dictionary, optional):
+                A dictionary representing the validation rules for the options passed to the function.
+            permission_classes (list[typing.Callable[[Request], bool] | typing.Type[BasePermission]], optional):
+                A list of callables or subclasses of BasePermission that are used to check if the user has permission to access the function.
         """
         self.name = _validateFunctionName(name or handler.__name__)
         self.description = description or handler.__doc__
         self.rule = rule
+        self.permission_classes = permission_classes
         self._handler = handler
 
         # instantly name the root rule
@@ -90,8 +94,26 @@ class ApiFunction:
         self, request: Request, options: dict[str, typing.Any]
     ) -> types.IntentResult:
         if self.rule:
+            # raises an error when validation fails
             self.rule.validate(options)
 
+        # check for permission
+        if self.permission_classes:
+            error = ValidationError("Unauthorised operation")
+
+            for permission in self.permission_classes:
+                if inspect.isfunction(permission):
+                    if not permission(request):
+                        raise error
+                elif issubclass(
+                    typing.cast(typing.Type[BasePermission], permission), BasePermission
+                ):
+                    permission = typing.cast(typing.Type[BasePermission], permission)
+                    permission_instance = permission()
+                    if not permission_instance.has_permission(request, None):
+                        raise error
+                else:
+                    raise ValueError("Invalid permission value in permission_classes")
         return self._handler(request, options)
 
     @staticmethod
@@ -99,31 +121,27 @@ class ApiFunction:
         name: str | None = None,
         description: str | None = None,
         rule: dto.Dictionary | None = None,
+        permission_classes: list[
+            typing.Callable[[Request], bool] | typing.Type[BasePermission]
+        ]
+        | None = None,
     ):
         """
         Decorator for defining and registering functions as "intents".
 
         This decorator takes the following arguments:
 
-        name: str | None = None
-        The name of the intent function. If not provided, the name of the decorated function will be used.
+        name (str, optional):
+            A string representing the name of the function. If not provided, the name of the handler function will be used.
+        description (str, optional):
+            A string representing a description of the function. If not provided, the docstring of the handler function will be used.
+        rule (dto.Dictionary, optional):
+            A dictionary representing the validation rules for the options passed to the function.
+        permission_classes (list[typing.Callable[[Request], bool] | typing.Type[BasePermission]], optional):
+            A list of callables or subclasses of BasePermission that are used to check if the user has permission to access the function.
 
-        description: str | None = None
-        A description of the intent function. If not provided, the docstring of the decorated function will be used.
-
-        requiredArgs: tuple | None = None
-        A tuple of strings representing the required arguments for the intent function.
-
-        optionalArgs: tuple | None = None
-        A tuple of strings representing the optional arguments for the intent function.
-
-        defaultValues: dict | None = None
-        A dictionary of default values for the optional arguments of the intent function.
-
-        allowUnknownArgs: bool = False
-        A flag indicating whether the intent function can be called with arguments that were not specified in the requiredArgs or optionalArgs arguments.
-
-        This decorator returns the decorated function wrapped in an ApiFunction object, which can be called like a regular function, but also has some additional properties and methods for handling input validation and other functionality."""
+        This decorator returns the decorated function wrapped in an ApiFunction object, which can be called like a regular function, but also has some additional properties and methods for handling input validation and other functionality.
+        """
 
         def _(
             handler: typing.Callable[
@@ -131,7 +149,11 @@ class ApiFunction:
             ]
         ):
             return ApiFunction(
-                handler=handler, name=name, description=description, rule=rule
+                handler=handler,
+                name=name,
+                description=description,
+                rule=rule,
+                permission_classes=permission_classes,
             )
 
         return _
