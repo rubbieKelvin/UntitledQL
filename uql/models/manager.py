@@ -348,7 +348,10 @@ class ModelOperationManager:
 
         role = self.app.getUserRole(request.user)
         updatePermission = ModelOperationManager.getPermission(
-            role, "update", self.exposedmodel.rolePermissions
+            role,
+            "update",
+            self.exposedmodel.rolePermissions,
+            request.user.pk if request.user else None,
         )
 
         check = updatePermission.get("check") or (lambda request, partial: True)
