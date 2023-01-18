@@ -230,6 +230,15 @@ class ModelOperationManager:
             else self.exposedmodel.model.objects.filter(select_permission["row"])
         )
 
+        if limit:
+            offset = offset or 0
+
+            # if we have limit = 3 and a list=[1, 2, 3, 4, 5, 6, 7, 8, 9]
+            # we get [1, 2, 3]
+            # if we have our offset to 1
+            # we get [4, 5, 6], for 2, we get [7, 8, 9]
+            queryset = queryset[offset * limit : (offset * limit) + limit]
+
         return sr(queryset.filter(query) if query else queryset, many=True).data
 
     def _insertSingle(
@@ -493,9 +502,17 @@ class ModelOperationManager:
                 ApiFunction(
                     self.findMany,
                     rule=dto.Dictionary(
-                        {"where": dto.Dictionary(allow_unknown_keys=True)}
+                        {
+                            "where": dto.Dictionary(allow_unknown_keys=True),
+                            "limit": dto.Number(
+                                nullable=True, validators=[lambda x: x > 0]
+                            ),
+                            "offset": dto.Number(
+                                nullable=True, validators=[lambda x: x > 0]
+                            ),
+                        }
                     ),
-                    description=f"Select many rows from {name}",
+                    description=f"Select many rows from {name}. offset requires limit to be useful, although it is not enforced",
                 ),
             ),
             ModelOperations.INSERT: (
