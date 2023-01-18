@@ -17,7 +17,7 @@ class ModelOperations(enum.Enum):
     SELECT_MANY = "SELECT_MANY"
     # INSERT_MANY = "INSERT_MANY"
     # DELETE_MANY = "DELETE_MANY"
-    # UPDATE_MANY = "UPDATE_MANY"
+    UPDATE_MANY = "UPDATE_MANY"
 
     @staticmethod
     def all():

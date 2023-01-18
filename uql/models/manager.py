@@ -387,6 +387,58 @@ class ModelOperationManager:
 
         return sr(model).data
 
+    def updateMany(
+        self, request: Request, args: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
+        partials: list[types.PartialUpdateType] = args["partials"]
+        role = self.app.getUserRole(request.user)
+        updatePermission = ModelOperationManager.getPermission(
+            role,
+            "update",
+            self.exposedmodel.rolePermissions,
+            ModelOperationManager.getUserPkFromRequest(request),
+        )
+
+        check = updatePermission.get("check") or (lambda request, partial: True)
+
+        if not all([check(request, partial) for partial in partials]):
+            raise PermissionError("Unauthorised update operation", 401)
+
+        # fetch the serializers that would be used to serialize the model instances
+        sr = self.exposedmodel.getSerializerClass(role)
+
+        modelInstances: list[models.Model] = []
+
+        with transaction.atomic():
+            for partial in partials:
+                # would raise a Model.DoesNotExist error if not found
+                model = (
+                    self.exposedmodel.model.objects.all()
+                    if updatePermission["row"] == constants.ALL_ROWS
+                    else self.exposedmodel.model.objects.filter(updatePermission["row"])
+                ).get(pk=partial["pk"])
+
+                modelInstances.append(model)
+
+                # let's be sure all the keys in partial['fields'] are allowed as per the permission
+                # let's get all the fields allowed in the permission
+                fields = (
+                    serializers._getAllModelFields(self.exposedmodel.model)
+                    if updatePermission["column"] == constants.ALL_COLUMNS
+                    else updatePermission["column"]
+                )
+
+                # partial["fields"] must be a subset of fields
+                if not set(partial["fields"]).issubset(fields):
+                    raise PermissionError(f"Unauthorised key in update", 401)
+
+                for key, val in partial["fields"].items():
+                    setattr(model, key, val)
+
+                model.save(update_fields=partial["fields"].keys())
+
+            return sr(modelInstances, many=True).data
+
     def delete(self, request: Request, args: dict[str, typing.Any]) -> None:
         pk: types.Pk = args["pk"]
 
@@ -485,6 +537,34 @@ class ModelOperationManager:
                     self.delete,
                     description=f"Delete a(n) {name} instance with the given pk",
                     rule=dto.Dictionary({"pk": dto.Any([dto.String(), dto.Number()])}),
+                ),
+            ),
+            ModelOperations.UPDATE_MANY: (
+                f"models.{name}.updatemany",
+                ApiFunction(
+                    self.updateMany,
+                    description=f"Updates many objects at the same time",
+                    rule=dto.Dictionary(
+                        {
+                            "partials": dto.List(
+                                dto.Dictionary(
+                                    {
+                                        "pk": dto.Any([dto.Number(), dto.String()]),
+                                        "fields": dto.Dictionary(
+                                            {
+                                                field: dto.Any(
+                                                    nullable=True, _name=field
+                                                )
+                                                for field in _getAllModelFields(
+                                                    self.exposedmodel.model
+                                                )
+                                            }
+                                        ),
+                                    }
+                                )
+                            )
+                        }
+                    ),
                 ),
             ),
         }
