@@ -210,6 +210,8 @@ class ModelOperationManager:
 
         # arguments
         where: dict[str, typing.Any] | None = args.get("where")
+        limit: int | None = args.get("limit")
+        offset: int | None = args.get("offset")
 
         # ...
         role = self.app.getUserRole(request.user)
@@ -383,7 +385,11 @@ class ModelOperationManager:
         for key, val in partial["fields"].items():
             setattr(model, key, val)
 
-        model.save(update_fields=partial["fields"].keys())
+        update_fields = {
+            *partial["fields"].keys(),
+            *self.exposedmodel.fieldsIncludedOnUpdate,
+        }
+        model.save(update_fields=list(update_fields))
 
         return sr(model).data
 
@@ -435,7 +441,12 @@ class ModelOperationManager:
                 for key, val in partial["fields"].items():
                     setattr(model, key, val)
 
-                model.save(update_fields=partial["fields"].keys())
+                update_fields = {
+                    *partial["fields"].keys(),
+                    *self.exposedmodel.fieldsIncludedOnUpdate,
+                }
+
+                model.save(update_fields=list(update_fields))
 
             return sr(modelInstances, many=True).data
 

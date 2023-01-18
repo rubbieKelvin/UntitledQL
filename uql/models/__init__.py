@@ -15,9 +15,10 @@ class ModelOperations(enum.Enum):
     DELETE = "DELETE"
     UPDATE = "UPDATE"
     SELECT_MANY = "SELECT_MANY"
+    UPDATE_MANY = "UPDATE_MANY"
+    # UPDATE_WHERE = "UPDATE_WHERE"
     # INSERT_MANY = "INSERT_MANY"
     # DELETE_MANY = "DELETE_MANY"
-    UPDATE_MANY = "UPDATE_MANY"
 
     @staticmethod
     def all():
@@ -70,6 +71,7 @@ class ExposedModel:
         *,
         model: type[models.Model],
         operations: list[ModelOperations] | None = None,
+        fieldsIncludedOnUpdate: list[str] | None = None,
     ) -> None:
         self.model = model
         self.rolePermissions: dict[
@@ -78,6 +80,9 @@ class ExposedModel:
             {}
         )  # permission is a role:permissionObject container, keeps permission for each role
         self.operations = operations or ModelOperations.all()
+
+        # fields we want always passed to Model.save(update_fields)
+        self.fieldsIncludedOnUpdate = fieldsIncludedOnUpdate or []
 
         # add model to dictionary
         self.__models[self.name] = self
