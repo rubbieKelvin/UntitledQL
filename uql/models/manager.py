@@ -351,7 +351,7 @@ class ModelOperationManager:
             role,
             "update",
             self.exposedmodel.rolePermissions,
-            request.user.pk if request.user else None,
+            ModelOperationManager.getUserPkFromRequest(request),
         )
 
         check = updatePermission.get("check") or (lambda request, partial: True)
@@ -392,7 +392,10 @@ class ModelOperationManager:
 
         role = self.app.getUserRole(request.user)
         deletePermission = ModelOperationManager.getPermission(
-            role, "delete", self.exposedmodel.rolePermissions
+            role,
+            "delete",
+            self.exposedmodel.rolePermissions,
+            ModelOperationManager.getUserPkFromRequest(request),
         )
 
         model = (
