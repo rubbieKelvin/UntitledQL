@@ -229,6 +229,7 @@ class ModelOperationManager:
             if select_permission["row"] == constants.ALL_ROWS
             else self.exposedmodel.model.objects.filter(select_permission["row"])
         )
+        queryset = queryset.filter(query) if query else queryset
 
         if limit:
             offset = offset or 0
@@ -239,7 +240,7 @@ class ModelOperationManager:
             # we get [4, 5, 6], for 2, we get [7, 8, 9]
             queryset = queryset[offset * limit : (offset * limit) + limit]
 
-        return sr(queryset.filter(query) if query else queryset, many=True).data
+        return sr(queryset, many=True).data
 
     def _insertSingle(
         self, request: Request, objectData: dict[str, types.JsonData | models.Model]
@@ -381,7 +382,7 @@ class ModelOperationManager:
 
         # let's be sure all the keys in partial['fields'] are allowed as per the permission
         # let's get all the fields allowed in the permission
-        fields = (
+        fields = (Cannot filter a query once a slice has been taken.
             serializers._getAllModelFields(self.exposedmodel.model)
             if updatePermission["column"] == constants.ALL_COLUMNS
             else updatePermission["column"]
