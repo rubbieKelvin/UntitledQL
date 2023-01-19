@@ -314,7 +314,7 @@ class ModelOperationManager:
             # to it's respective object
             if key in fk_fields.keys():
                 fk_meta = fk_fields[key]
-                objectData[key] = fk_meta["model"].objects.get(pk=objectData["key"])
+                objectData[key] = fk_meta["model"].objects.get(pk=objectData[key])
 
         try:
             # create model
