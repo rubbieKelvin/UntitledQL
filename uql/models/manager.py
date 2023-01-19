@@ -382,7 +382,7 @@ class ModelOperationManager:
 
         # let's be sure all the keys in partial['fields'] are allowed as per the permission
         # let's get all the fields allowed in the permission
-        fields = (Cannot filter a query once a slice has been taken.
+        fields = (
             serializers._getAllModelFields(self.exposedmodel.model)
             if updatePermission["column"] == constants.ALL_COLUMNS
             else updatePermission["column"]
