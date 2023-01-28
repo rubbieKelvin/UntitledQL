@@ -96,6 +96,11 @@ conjunctions: dict[ConjunctionTypes, Conjunction] = {
     "_not": Conjunction("_not", lambda items: ~reduce(lambda a, b: a & b, items)),
 }
 
+
+class QueryStructureError(BaseException):
+    pass
+
+
 # make query func
 # TODO: cache function
 def makeQuery(query: dict[str, typing.Any], **kwargs: str) -> Q:
@@ -105,25 +110,32 @@ def makeQuery(query: dict[str, typing.Any], **kwargs: str) -> Q:
     # Initialize list to store Q objects for each criterion
     res: list[Q] = []
 
-    for item, value in query.items():
-        # check if item is a criterion or conjunction
-        criterion = criterions.get(typing.cast(CriterionTypes, item))
-        conjunction = conjunctions.get(typing.cast(ConjunctionTypes, item))
+    try:
+        for item, value in query.items():
+            # check if item is a criterion or conjunction
+            criterion = criterions.get(typing.cast(CriterionTypes, item))
+            conjunction = conjunctions.get(typing.cast(ConjunctionTypes, item))
 
-        if criterion:
-            # If item is a criterion, resolve it and add the resulting Q object to the list
-            res.append(criterion.resolve(parent, value))
+            if criterion:
+                # If item is a criterion, resolve it and add the resulting Q object to the list
+                res.append(criterion.resolve(parent, value))
 
-        elif conjunction:
-            # If item is a conjunction, recursively resolve its values and combine them using the conjunction
-            assert isinstance(value, Sequence)
-            res.append(
-                conjunction.resolve([makeQuery(i, parent=parent) for i in value])
-            )
+            elif conjunction:
+                # If item is a conjunction, recursively resolve its values and combine them using the conjunction
+                assert isinstance(value, Sequence)
+                res.append(
+                    conjunction.resolve([makeQuery(i, parent=parent) for i in value])
+                )
 
-        else:
-            # If item is not a criterion or conjunction, treat it as a field name and recursively resolve its value
-            res.append(makeQuery(value, parent=f"{parent}__{item}" if parent else item))
+            else:
+                # If item is not a criterion or conjunction, treat it as a field name and recursively resolve its value
+                res.append(
+                    makeQuery(value, parent=f"{parent}__{item}" if parent else item)
+                )
 
-    # Combine all Q objects using the _and conjunction
-    return reduce(lambda a, b: a & b, res)
+        # Combine all Q objects using the _and conjunction
+        return reduce(lambda a, b: a & b, res)
+    except AttributeError:
+        raise QueryStructureError(
+            f'expected a citarion or relationship, got a string "{query}"', 400
+        )
