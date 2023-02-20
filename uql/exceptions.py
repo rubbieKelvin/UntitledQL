@@ -19,3 +19,6 @@ class RequestHandlingError(BaseException):
         self.errorCode = errorCode
         self.summary = summary
         super().__init__(msg)
+
+class InexistentExposedModel(BaseException):
+    pass

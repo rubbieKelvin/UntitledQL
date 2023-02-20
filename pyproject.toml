@@ -9,6 +9,7 @@ license = "GNU"
 python = "^3.10"
 Django = "^4.1"
 django-rest-framework = "^0.1.0"
+colorama = "^0.4.6"
 
 [tool.poetry.group.dev.dependencies]
 toml = "^0.10.2"

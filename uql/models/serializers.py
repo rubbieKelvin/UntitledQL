@@ -1,7 +1,13 @@
 import typing
+from colorama import Fore, Style
+
 from uql import types
 from uql import constants
+from uql.exceptions import InexistentExposedModel
+
 from django.db import models
+from django.db.models.fields import reverse_related
+
 from rest_framework.serializers import ModelSerializer
 
 if typing.TYPE_CHECKING:
@@ -30,7 +36,9 @@ def _getModelForiegnFields(
 ) -> dict[str, types.ForeignKeyType]:
     foreign_keys: dict[str, types.ForeignKeyType] = {}
     for field in modelClass._meta.get_fields(include_hidden=False):
-        if isinstance(field, models.ForeignKey):
+        if isinstance(field, models.ForeignKey) or isinstance(
+            field, reverse_related.ForeignObjectRel
+        ):
             foreign_keys[field.name] = {
                 "model": field.related_model,
                 "type": "OBJECT" if field.many_to_one else "LIST",
@@ -138,8 +146,16 @@ def createSerializerClass(
                         # from this node up from the parent's model root
                         continue
 
-                    # related exposed model
-                    related_em = exposedmodel.getExposedModel(fk["model"])
+                    try:
+                        # related exposed model
+                        related_em = exposedmodel.getExposedModel(fk["model"])
+                    except InexistentExposedModel:
+                        print(
+                            Fore.RED,
+                            f"EXPOSED MODEL: {fk['model']} not found",
+                            Style.RESET_ALL,
+                        )
+                        continue
 
                     # create a serializer for the related exposed model
                     related_em_sr = createSerializerClass(

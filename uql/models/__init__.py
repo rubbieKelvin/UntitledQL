@@ -7,6 +7,7 @@ from rest_framework.serializers import ModelSerializer
 
 from uql import types
 from uql import constants
+from uql.exceptions import InexistentExposedModel
 
 
 class ModelOperations(enum.Enum):
@@ -108,7 +109,10 @@ class ExposedModel:
         """fetchs a model configuration if the model has been wrapped in the ModelConfig class.
         this should use the same method of model name generation used in ModelConfig.name
         """
-        return ExposedModel.__models[ExposedModel.getModelName(model)]
+        try:
+            return ExposedModel.__models[ExposedModel.getModelName(model)]
+        except AttributeError:
+            raise InexistentExposedModel("Coudnt find model")
 
     @property
     def name(self) -> str:
