@@ -136,7 +136,7 @@ def createSerializerClass(
                 if name in Sr.Meta.fields:
                     if (
                         recursive_relation.get(fk["model"], 0)
-                        > ExposedModel.RELATION_RECURSIVE_DEPTH
+                        > exposedmodel.RELATION_RECURSIVE_DEPTH
                     ):
                         # skip this model if it's been referenced up to RELATION_RECURSIVE_DEPTH
                         # from this node up from the parent's model root
