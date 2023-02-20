@@ -14,10 +14,6 @@ if typing.TYPE_CHECKING:
     # Imports only used for type checking
     from . import ExposedModel
 
-# defines how many time a related object is allowed to recursively point
-# to a foriegn key until the key is just an id in the serializer
-RELATION_RECURSIVE_DEPTH = 1
-
 
 def _raisePermissionError(role: str):
     """
@@ -140,7 +136,7 @@ def createSerializerClass(
                 if name in Sr.Meta.fields:
                     if (
                         recursive_relation.get(fk["model"], 0)
-                        > RELATION_RECURSIVE_DEPTH
+                        > ExposedModel.RELATION_RECURSIVE_DEPTH
                     ):
                         # skip this model if it's been referenced up to RELATION_RECURSIVE_DEPTH
                         # from this node up from the parent's model root

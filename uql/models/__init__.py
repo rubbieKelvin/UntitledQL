@@ -66,6 +66,10 @@ class ExposedModel:
 
     ALL_COLUMNS = constants.ALL_COLUMNS
     ALL_ROWS = constants.ALL_ROWS
+    
+    # defines how many time a related object is allowed to recursively point
+    # to a foriegn key until the key is just an id in the serializer
+    RELATION_RECURSIVE_DEPTH = 1
 
     def __init__(
         self,
